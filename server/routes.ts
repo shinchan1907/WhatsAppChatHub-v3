@@ -516,81 +516,113 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/webhooks/whatsapp", async (req, res) => {
     try {
+      console.log("📨 Webhook received:", JSON.stringify(req.body, null, 2));
+      
       // Log incoming webhook for debugging
-      await storage.createWebhookLog({
-        source: "whatsapp",
-        payload: req.body,
-        status: "received",
-      });
+      try {
+        await storage.createWebhookLog({
+          source: "whatsapp",
+          payload: req.body,
+          status: "received",
+        });
+      } catch (logError) {
+        console.error("Failed to log webhook:", logError);
+      }
 
       // Parse WhatsApp webhook payload
       if (req.body.entry) {
         for (const entry of req.body.entry) {
+          console.log("📋 Processing entry:", entry.id);
           for (const change of entry.changes || []) {
+            console.log("🔄 Processing change:", change.field);
+            
             // Handle incoming messages
             if (change.value?.messages) {
+              console.log("💬 Found messages:", change.value.messages.length);
+              
               for (const msg of change.value.messages) {
-                // Find or create conversation
-                let conversation = (await storage.getConversations()).find(c => 
-                  c.contact?.phone === msg.from
-                );
+                console.log("📩 Processing message from:", msg.from, "content:", msg.text?.body);
                 
-                if (!conversation) {
-                  // Create new contact and conversation
-                  const contact = await storage.createContact({
-                    name: `Contact ${msg.from}`,
-                    phone: msg.from,
-                    group: "customer",
-                  });
+                try {
+                  // Find or create conversation
+                  const conversations = await storage.getConversations();
+                  let conversation = conversations.find(c => 
+                    c.contact?.phone === msg.from
+                  );
                   
-                  conversation = await storage.createConversation(contact.id);
-                }
-                
-                // Create incoming message
-                const message = await storage.createMessage({
-                  conversationId: conversation.id,
-                  contactId: conversation.contactId,
-                  content: msg.text?.body || "",
-                  direction: "inbound",
-                  status: "delivered",
-                  whatsappMessageId: msg.id,
-                  timestamp: new Date(parseInt(msg.timestamp) * 1000),
-                });
-                
-                // Notify WebSocket clients
-                wsConnections.forEach((ws) => {
-                  if (ws.readyState === WebSocket.OPEN) {
-                    ws.send(JSON.stringify({
+                  if (!conversation) {
+                    console.log("👤 Creating new contact and conversation for:", msg.from);
+                    // Create new contact and conversation
+                    const contact = await storage.createContact({
+                      name: `Contact ${msg.from}`,
+                      phone: msg.from,
+                      group: "customer",
+                    });
+                    
+                    conversation = await storage.createConversation(contact.id);
+                    console.log("✅ Created conversation:", conversation.id);
+                  }
+                  
+                  if (conversation) {
+                    // Create incoming message
+                    const message = await storage.createMessage({
+                      conversationId: conversation.id,
+                      contactId: conversation.contactId || conversation.contact?.id || "",
+                      content: msg.text?.body || msg.type || "Media message",
+                      direction: "inbound",
+                      status: "delivered",
+                    });
+                    
+                    console.log("✅ Created message:", message.id, "in conversation:", conversation.id);
+                  
+                    // Notify WebSocket clients
+                    const wsMessage = {
                       type: "new_message",
                       data: message,
-                    }));
+                    };
+                    
+                    console.log("📡 Broadcasting to", wsConnections.size, "WebSocket clients");
+                    
+                    wsConnections.forEach((ws) => {
+                      if (ws.readyState === WebSocket.OPEN) {
+                        ws.send(JSON.stringify(wsMessage));
+                      }
+                    });
                   }
-                });
+                  
+                } catch (msgError) {
+                  console.error("❌ Error processing message:", msgError);
+                }
               }
             }
             
             // Handle message status updates
             if (change.value?.statuses) {
+              console.log("📊 Message status updates:", change.value.statuses.length);
               for (const status of change.value.statuses) {
-                // Find message by WhatsApp ID and update status
-                // This would require extending the storage interface
-                console.log("Message status update:", status);
+                console.log("📈 Status update:", status.id, "->", status.status);
               }
             }
           }
         }
+      } else {
+        console.log("⚠️ No entry found in webhook payload");
       }
       
       res.status(200).send('OK');
     } catch (error) {
-      console.error("Webhook processing error:", error);
+      console.error("❌ Webhook processing error:", error);
       
-      await storage.createWebhookLog({
-        source: "whatsapp",
-        payload: req.body,
-        status: "failed",
-        errorMessage: error instanceof Error ? error.message : "Unknown error",
-      });
+      try {
+        await storage.createWebhookLog({
+          source: "whatsapp",
+          payload: req.body,
+          status: "failed",
+          errorMessage: error instanceof Error ? error.message : "Unknown error",
+        });
+      } catch (logError) {
+        console.error("Failed to log webhook error:", logError);
+      }
       
       res.status(500).send('Error');
     }

@@ -344,18 +344,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Extract template content from Facebook template structure
           let content = fbTemplate.components?.find((c: any) => c.type === "BODY")?.text || fbTemplate.name;
           
-          const templateData = {
-            name: fbTemplate.name,
-            content: content,
-            language: fbTemplate.language || "en",
-            category: fbTemplate.category || "MARKETING",
-            status: "approved",
-            variables: fbTemplate.components?.find((c: any) => c.type === "BODY")?.example?.body_text?.[0] || [],
-            facebookTemplateId: fbTemplate.id
-          };
+          // Check if template already exists (avoid duplicates)
+          const existingTemplates = await storage.getTemplates();
+          const exists = existingTemplates.find(t => t.name === fbTemplate.name);
+          
+          if (!exists) {
+            const templateData = {
+              name: fbTemplate.name,
+              content: content,
+              language: fbTemplate.language || "en",
+              category: fbTemplate.category?.toLowerCase() || "general",
+              status: "approved",
+              variables: fbTemplate.components?.find((c: any) => c.type === "BODY")?.example?.body_text?.[0] || [],
+              facebookTemplateId: fbTemplate.id
+            };
 
-          await storage.createTemplate(templateData);
-          syncedCount++;
+            console.log(`📋 Creating template: ${fbTemplate.name}`);
+            await storage.createTemplate(templateData);
+            syncedCount++;
+          } else {
+            console.log(`📋 Template ${fbTemplate.name} already exists, skipping`);
+          }
         } catch (error) {
           console.warn(`Failed to sync template ${fbTemplate.name}:`, error);
         }

@@ -253,10 +253,13 @@ export default function Settings() {
                       id="whatsappBusinessAccountId"
                       value={configData.whatsappBusinessAccountId || ""}
                       onChange={(e) => handleInputChange("whatsappBusinessAccountId", e.target.value)}
-                      placeholder="123456789012345"
+                      placeholder="732324892861637"
                       data-testid="input-business-account-id"
                     />
-                    <p className="text-xs text-gray-500 mt-1">Optional: For account management</p>
+                    <p className="text-xs text-blue-600 mt-1">
+                      📋 From webhook logs, your Business Account ID should be: <strong>732324892861637</strong>
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">Required for template sync from Facebook Business Manager</p>
                   </div>
 
                   <div>

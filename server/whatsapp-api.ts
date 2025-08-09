@@ -245,25 +245,72 @@ export class WhatsAppAPIService {
 
       console.log("📋 Starting template sync from Facebook Business Manager...");
 
-      // Get WhatsApp Business Account ID from phone number ID
-      const phoneResponse = await fetch(`https://graph.facebook.com/v21.0/${this.config.whatsappPhoneNumberId}`, {
-        headers: {
-          "Authorization": `Bearer ${this.config.whatsappAccessToken}`,
-        },
-      });
+      // Try multiple methods to get WhatsApp Business Account ID
+      let waBaId = this.config.whatsappBusinessAccountId;
 
-      const phoneData = await phoneResponse.json();
-      
-      if (!phoneResponse.ok) {
-        console.error("❌ Failed to get phone info:", phoneData);
-        return { success: false, error: "Failed to get phone number information" };
+      if (!waBaId) {
+        console.log("📋 Attempting to get WABA ID from phone number...");
+        const phoneResponse = await fetch(`https://graph.facebook.com/v21.0/${this.config.whatsappPhoneNumberId}?fields=whatsapp_business_account_id`, {
+          headers: {
+            "Authorization": `Bearer ${this.config.whatsappAccessToken}`,
+          },
+        });
+
+        const phoneData = await phoneResponse.json();
+        console.log("📋 Phone API response:", phoneData);
+        
+        if (phoneResponse.ok) {
+          waBaId = phoneData.whatsapp_business_account_id;
+        } else {
+          console.log("📋 Phone API failed, trying alternative methods...");
+          
+          // Try to get all WhatsApp Business Accounts accessible by this token
+          const wabAccountsResponse = await fetch(`https://graph.facebook.com/v21.0/me/businesses`, {
+            headers: {
+              "Authorization": `Bearer ${this.config.whatsappAccessToken}`,
+            },
+          });
+          
+          if (wabAccountsResponse.ok) {
+            const businessesData = await wabAccountsResponse.json();
+            console.log("📋 Businesses response:", businessesData);
+            
+            // If we have businesses, try to find WABA from the first one
+            if (businessesData.data && businessesData.data.length > 0) {
+              const businessId = businessesData.data[0].id;
+              
+              // Get WhatsApp Business Accounts from the business
+              const wabaResponse = await fetch(`https://graph.facebook.com/v21.0/${businessId}?fields=owned_whatsapp_business_accounts`, {
+                headers: {
+                  "Authorization": `Bearer ${this.config.whatsappAccessToken}`,
+                },
+              });
+              
+              if (wabaResponse.ok) {
+                const wabaData = await wabaResponse.json();
+                console.log("📋 WABA response:", wabaData);
+                
+                if (wabaData.owned_whatsapp_business_accounts?.data?.length > 0) {
+                  waBaId = wabaData.owned_whatsapp_business_accounts.data[0].id;
+                }
+              }
+            }
+          }
+        }
       }
 
-      const waBaId = phoneData.whatsapp_business_account_id;
-      console.log("📋 WhatsApp Business Account ID:", waBaId);
+      console.log("📋 Using WhatsApp Business Account ID:", waBaId);
+
+      if (!waBaId) {
+        return { 
+          success: false, 
+          error: "Could not find WhatsApp Business Account ID. Please add your WhatsApp Business Account ID manually in Settings → WhatsApp Business → Business Account ID field, or ensure your access token has proper permissions." 
+        };
+      }
 
       // Fetch message templates from Facebook Business Manager
-      const templatesResponse = await fetch(`https://graph.facebook.com/v21.0/${waBaId}/message_templates?limit=100`, {
+      console.log(`📋 Fetching templates from WABA: ${waBaId}`);
+      const templatesResponse = await fetch(`https://graph.facebook.com/v21.0/${waBaId}/message_templates?limit=100&fields=id,name,status,category,language,components`, {
         headers: {
           "Authorization": `Bearer ${this.config.whatsappAccessToken}`,
         },

@@ -6,7 +6,7 @@ import * as schema from "@shared/schema";
 neonConfig.webSocketConstructor = ws;
 
 // Set your external database URL
-const DATABASE_URL = process.env.DATABASE_URL || "postgresql://neondb_owner:npg_1IpD2XOutJMC@ep-empty-queen-ae788c7b-pooler.c-2.us-east-2.aws.neon.tech/neondb?sslmode=require&channel_binding=require";
+const DATABASE_URL = "postgresql://neondb_owner:npg_1IpD2XOutJMC@ep-empty-queen-ae788c7b-pooler.c-2.us-east-2.aws.neon.tech/neondb?sslmode=require&channel_binding=require";
 
 if (!DATABASE_URL) {
   throw new Error(

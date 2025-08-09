@@ -77,8 +77,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message: "Invalid credentials" });
       }
 
-      // For demo purposes, using simple comparison. In production, use bcrypt
-      const isValid = password === user.password;
+      // Use bcrypt to compare password with hash
+      const isValid = await bcrypt.compare(password, user.password);
       if (!isValid) {
         return res.status(401).json({ message: "Invalid credentials" });
       }

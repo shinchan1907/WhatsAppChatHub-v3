@@ -17,6 +17,10 @@ A comprehensive SaaS-like WhatsApp Business Cloud API management system similar 
 - **✅ Media Upload/Download Support**: Images, videos, and documents via chat with WhatsApp API integration
 - **✅ Template Variable Dialog**: Prompts for template variables before sending template messages
 - **✅ Persistent Database Storage**: PostgreSQL database for data persistence across restarts
+- **✅ Enhanced Read Receipts**: Blue tick indicators for read messages with proper status tracking
+- **✅ Unread Message Indicators**: Visual count badges in conversation list for new messages
+- **✅ Media Server Integration**: CDN configuration tab with support for Bunny CDN, AWS S3, Cloudinary, and custom CDN providers
+- **✅ Database Schema Updates**: Extended configuration storage for CDN settings and media handling
 
 ## User Preferences
 

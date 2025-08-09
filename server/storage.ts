@@ -488,4 +488,295 @@ export class MemStorage implements IStorage {
   }
 }
 
-export const storage = new MemStorage();
+import { db } from "./db";
+import { eq } from "drizzle-orm";
+
+export class DatabaseStorage implements IStorage {
+  // User operations
+  async getUser(id: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user || undefined;
+  }
+
+  async getUserByUsername(username: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.username, username));
+    return user || undefined;
+  }
+
+  async createUser(insertUser: InsertUser): Promise<User> {
+    const [user] = await db
+      .insert(users)
+      .values({ ...insertUser, id: randomUUID(), createdAt: new Date() })
+      .returning();
+    return user;
+  }
+
+  // Contact operations
+  async getContacts(): Promise<Contact[]> {
+    return await db.select().from(contacts);
+  }
+
+  async getContact(id: string): Promise<Contact | undefined> {
+    const [contact] = await db.select().from(contacts).where(eq(contacts.id, id));
+    return contact || undefined;
+  }
+
+  async createContact(insertContact: InsertContact): Promise<Contact> {
+    const [contact] = await db
+      .insert(contacts)
+      .values({ 
+        ...insertContact, 
+        id: randomUUID(), 
+        createdAt: new Date(),
+        group: insertContact.group || "customer",
+        email: insertContact.email || null,
+        profileImageUrl: insertContact.profileImageUrl || null,
+        lastContact: insertContact.lastContact || null
+      })
+      .returning();
+    return contact;
+  }
+
+  async updateContact(id: string, updates: Partial<InsertContact>): Promise<Contact> {
+    const [contact] = await db
+      .update(contacts)
+      .set(updates)
+      .where(eq(contacts.id, id))
+      .returning();
+    return contact;
+  }
+
+  async deleteContact(id: string): Promise<void> {
+    await db.delete(contacts).where(eq(contacts.id, id));
+  }
+
+  // Conversation operations
+  async getConversations(): Promise<ConversationWithContact[]> {
+    const result = await db
+      .select({
+        id: conversations.id,
+        contactId: conversations.contactId,
+        lastMessageId: conversations.lastMessageId,
+        unreadCount: conversations.unreadCount,
+        updatedAt: conversations.updatedAt,
+        contact: contacts
+      })
+      .from(conversations)
+      .innerJoin(contacts, eq(conversations.contactId, contacts.id));
+    
+    return result;
+  }
+
+  async getConversation(id: string): Promise<Conversation | undefined> {
+    const [conversation] = await db.select().from(conversations).where(eq(conversations.id, id));
+    return conversation || undefined;
+  }
+
+  async createConversation(contactId: string): Promise<Conversation> {
+    const [conversation] = await db
+      .insert(conversations)
+      .values({
+        id: randomUUID(),
+        contactId,
+        lastMessageId: "",
+        unreadCount: 0,
+        updatedAt: new Date(),
+      })
+      .returning();
+    return conversation;
+  }
+
+  async updateConversation(id: string, updates: Partial<Conversation>): Promise<void> {
+    await db
+      .update(conversations)
+      .set(updates)
+      .where(eq(conversations.id, id));
+  }
+
+  // Message operations
+  async getMessages(conversationId: string): Promise<Message[]> {
+    return await db
+      .select()
+      .from(messages)
+      .where(eq(messages.conversationId, conversationId))
+      .orderBy(messages.timestamp);
+  }
+
+  async createMessage(insertMessage: InsertMessage): Promise<Message> {
+    const [message] = await db
+      .insert(messages)
+      .values({ 
+        ...insertMessage, 
+        id: randomUUID(), 
+        timestamp: new Date(),
+        type: insertMessage.type || "text",
+        status: insertMessage.status || "sent",
+        templateId: insertMessage.templateId || null,
+        metadata: insertMessage.metadata || null
+      })
+      .returning();
+    
+    // Update conversation
+    await this.updateConversation(message.conversationId, {
+      lastMessageId: message.id,
+      updatedAt: new Date(),
+    });
+    
+    return message;
+  }
+
+  async updateMessageStatus(id: string, status: string): Promise<void> {
+    await db
+      .update(messages)
+      .set({ status })
+      .where(eq(messages.id, id));
+  }
+
+  // Template operations
+  async getTemplates(): Promise<Template[]> {
+    return await db.select().from(templates).where(eq(templates.isActive, true));
+  }
+
+  async getTemplate(id: string): Promise<Template | undefined> {
+    const [template] = await db.select().from(templates).where(eq(templates.id, id));
+    return template || undefined;
+  }
+
+  async createTemplate(insertTemplate: InsertTemplate): Promise<Template> {
+    const [template] = await db
+      .insert(templates)
+      .values({ 
+        ...insertTemplate, 
+        id: randomUUID(), 
+        createdAt: new Date(),
+        category: insertTemplate.category || "general",
+        variables: insertTemplate.variables || null,
+        isActive: insertTemplate.isActive !== undefined ? insertTemplate.isActive : true
+      })
+      .returning();
+    return template;
+  }
+
+  async updateTemplate(id: string, updates: Partial<InsertTemplate>): Promise<Template> {
+    const [template] = await db
+      .update(templates)
+      .set(updates)
+      .where(eq(templates.id, id))
+      .returning();
+    return template;
+  }
+
+  async deleteTemplate(id: string): Promise<void> {
+    await db
+      .update(templates)
+      .set({ isActive: false })
+      .where(eq(templates.id, id));
+  }
+
+  // Broadcast operations
+  async getBroadcasts(): Promise<Broadcast[]> {
+    return await db.select().from(broadcasts).orderBy(broadcasts.createdAt);
+  }
+
+  async getBroadcast(id: string): Promise<Broadcast | undefined> {
+    const [broadcast] = await db.select().from(broadcasts).where(eq(broadcasts.id, id));
+    return broadcast || undefined;
+  }
+
+  async createBroadcast(insertBroadcast: InsertBroadcast): Promise<Broadcast> {
+    const [broadcast] = await db
+      .insert(broadcasts)
+      .values({ 
+        ...insertBroadcast, 
+        id: randomUUID(), 
+        createdAt: new Date(),
+        sentAt: null
+      })
+      .returning();
+    return broadcast;
+  }
+
+  async updateBroadcast(id: string, updates: Partial<Broadcast>): Promise<void> {
+    await db
+      .update(broadcasts)
+      .set(updates)
+      .where(eq(broadcasts.id, id));
+  }
+
+  // Configuration operations
+  async getAppConfig(userId: string): Promise<AppConfig | undefined> {
+    console.log("🔍 Getting config from DB for user:", userId);
+    const [config] = await db.select().from(appConfig).where(eq(appConfig.userId, userId));
+    console.log("📋 Config found:", config ? "yes" : "no");
+    return config || undefined;
+  }
+
+  async updateAppConfig(userId: string, config: Partial<InsertAppConfig>): Promise<AppConfig> {
+    console.log("💾 Updating config in DB for user:", userId);
+    console.log("📝 Config data:", Object.keys(config));
+    
+    const existing = await this.getAppConfig(userId);
+    const now = new Date();
+    
+    const configData = {
+      id: existing?.id || randomUUID(),
+      userId,
+      whatsappAccessToken: config.whatsappAccessToken !== undefined ? config.whatsappAccessToken : existing?.whatsappAccessToken || null,
+      whatsappPhoneNumberId: config.whatsappPhoneNumberId !== undefined ? config.whatsappPhoneNumberId : existing?.whatsappPhoneNumberId || null,
+      whatsappBusinessAccountId: config.whatsappBusinessAccountId !== undefined ? config.whatsappBusinessAccountId : existing?.whatsappBusinessAccountId || null,
+      whatsappWebhookVerifyToken: config.whatsappWebhookVerifyToken !== undefined ? config.whatsappWebhookVerifyToken : existing?.whatsappWebhookVerifyToken || null,
+      n8nWebhookUrl: config.n8nWebhookUrl !== undefined ? config.n8nWebhookUrl : existing?.n8nWebhookUrl || null,
+      n8nApiKey: config.n8nApiKey !== undefined ? config.n8nApiKey : existing?.n8nApiKey || null,
+      n8nEnabled: config.n8nEnabled ?? existing?.n8nEnabled ?? false,
+      usePersistentDb: config.usePersistentDb ?? existing?.usePersistentDb ?? false,
+      dbHost: config.dbHost !== undefined ? config.dbHost : existing?.dbHost || null,
+      dbPort: config.dbPort !== undefined ? config.dbPort : existing?.dbPort || null,
+      dbName: config.dbName !== undefined ? config.dbName : existing?.dbName || null,
+      dbUsername: config.dbUsername !== undefined ? config.dbUsername : existing?.dbUsername || null,
+      dbPassword: config.dbPassword !== undefined ? config.dbPassword : existing?.dbPassword || null,
+      enableLogging: config.enableLogging ?? existing?.enableLogging ?? true,
+      webhookSecret: config.webhookSecret !== undefined ? config.webhookSecret : existing?.webhookSecret || randomUUID(),
+      isConfigured: config.isConfigured ?? existing?.isConfigured ?? false,
+      createdAt: existing?.createdAt || now,
+      updatedAt: now,
+    };
+
+    if (existing) {
+      const [updated] = await db
+        .update(appConfig)
+        .set(configData)
+        .where(eq(appConfig.userId, userId))
+        .returning();
+      return updated;
+    } else {
+      const [created] = await db
+        .insert(appConfig)
+        .values(configData)
+        .returning();
+      return created;
+    }
+  }
+
+  // Webhook log operations
+  async createWebhookLog(insertLog: InsertWebhookLog): Promise<WebhookLog> {
+    const [log] = await db
+      .insert(webhookLogs)
+      .values({ 
+        ...insertLog, 
+        id: randomUUID(), 
+        timestamp: new Date()
+      })
+      .returning();
+    return log;
+  }
+
+  async getWebhookLogs(limit = 100): Promise<WebhookLog[]> {
+    return await db
+      .select()
+      .from(webhookLogs)
+      .orderBy(webhookLogs.timestamp)
+      .limit(limit);
+  }
+}
+
+export const storage = new DatabaseStorage();

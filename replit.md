@@ -14,6 +14,9 @@ A comprehensive SaaS-like WhatsApp Business Cloud API management system similar 
 - **✅ Configuration Management**: Complete GUI-based setup for WhatsApp credentials and n8n integration
 - **✅ Contact & Conversation Management**: Full CRUD operations with real-time updates
 - **✅ Webhook Processing**: Comprehensive webhook handling for messages and status updates
+- **✅ Media Upload/Download Support**: Images, videos, and documents via chat with WhatsApp API integration
+- **✅ Template Variable Dialog**: Prompts for template variables before sending template messages
+- **✅ Persistent Database Storage**: PostgreSQL database for data persistence across restarts
 
 ## User Preferences
 
@@ -74,9 +77,9 @@ The backend follows a REST API pattern with comprehensive WhatsApp integration:
 - **Error Handling**: Detailed logging and error responses with user-friendly messages
 
 ### Database Architecture
-Currently uses in-memory storage with optional PostgreSQL support:
+Now uses PostgreSQL database for persistent storage:
 
-- **Storage System**: Flexible storage interface supporting both in-memory and persistent storage
+- **Storage System**: Database-backed storage using PostgreSQL with Neon serverless
 - **Schema Design**: Comprehensive data models for users, contacts, conversations, messages, templates, broadcasts, and app configuration
 - **Configuration Management**: Per-user configuration storage for WhatsApp credentials and system settings
 - **Webhook Logging**: Complete audit trail of all webhook events and API interactions

@@ -188,6 +188,83 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Template message route
+  app.post("/api/messages/template", requireAuth, async (req: any, res) => {
+    try {
+      const { conversationId, contactId, templateId } = req.body;
+      const userId = req.session.userId;
+
+      if (!conversationId || !contactId || !templateId) {
+        return res.status(400).json({ message: "Missing required fields" });
+      }
+
+      // Get template details
+      const template = await storage.getTemplate(templateId);
+      if (!template) {
+        return res.status(404).json({ message: "Template not found" });
+      }
+
+      // Get contact details
+      const contact = await storage.getContact(contactId);
+      if (!contact) {
+        return res.status(404).json({ message: "Contact not found" });
+      }
+
+      // Create message record with template details
+      const messageData = {
+        conversationId,
+        contactId,
+        content: template.content,
+        type: "template",
+        direction: "outbound" as const,
+        status: "sent" as const,
+        templateId: templateId,
+        metadata: {
+          templateName: template.name,
+          templateCategory: template.category
+        },
+      };
+
+      const message = await storage.createMessage(messageData);
+
+      // Send via WhatsApp API using template
+      const config = await storage.getAppConfig(userId);
+      if (config && config.whatsappAccessToken && config.whatsappPhoneNumberId) {
+        console.log("📤 Sending template message via WhatsApp API");
+        const whatsappService = new WhatsAppAPIService(config);
+        
+        const result = await whatsappService.sendTemplateMessage(
+          contact.phone, 
+          template.name,
+          [] // No variables for now - can be enhanced later
+        );
+        
+        if (result.success) {
+          console.log("✅ Template message sent successfully");
+          await storage.updateMessageStatus(message.id, "delivered");
+        } else {
+          console.error("❌ WhatsApp template send error:", result.error);
+          await storage.updateMessageStatus(message.id, "failed");
+        }
+      }
+
+      // Broadcast to WebSocket clients
+      wsConnections.forEach((ws) => {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({
+            type: "new_message",
+            data: message,
+          }));
+        }
+      });
+
+      res.status(201).json(message);
+    } catch (error) {
+      console.error("Send template message error:", error);
+      res.status(500).json({ message: "Failed to send template message" });
+    }
+  });
+
   // Message routes
   app.post("/api/messages", requireAuth, async (req: any, res) => {
     try {

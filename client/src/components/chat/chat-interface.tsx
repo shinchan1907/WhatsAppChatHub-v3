@@ -92,15 +92,11 @@ export default function ChatInterface({ selectedConversationId, onConversationSe
 
     setIsSending(true);
     try {
-      await apiRequest("POST", "/api/messages", {
+      // Send template message via dedicated API endpoint
+      await apiRequest("POST", "/api/messages/template", {
         conversationId: selectedConversationId,
         contactId: selectedConversation?.contactId,
-        content: "Template message sent",
-        type: "template",
-        direction: "outbound",
-        status: "sent",
         templateId: templateId,
-        metadata: null,
       });
 
       setShowTemplateSelector(false);

@@ -236,4 +236,54 @@ export class WhatsAppAPIService {
       };
     }
   }
+
+  async syncTemplatesFromFBM(): Promise<{ success: boolean; templates?: any[]; error?: string }> {
+    try {
+      if (!this.config.whatsappAccessToken) {
+        return { success: false, error: "WhatsApp access token is required" };
+      }
+
+      console.log("📋 Starting template sync from Facebook Business Manager...");
+
+      // Get WhatsApp Business Account ID from phone number ID
+      const phoneResponse = await fetch(`https://graph.facebook.com/v21.0/${this.config.whatsappPhoneNumberId}`, {
+        headers: {
+          "Authorization": `Bearer ${this.config.whatsappAccessToken}`,
+        },
+      });
+
+      const phoneData = await phoneResponse.json();
+      
+      if (!phoneResponse.ok) {
+        console.error("❌ Failed to get phone info:", phoneData);
+        return { success: false, error: "Failed to get phone number information" };
+      }
+
+      const waBaId = phoneData.whatsapp_business_account_id;
+      console.log("📋 WhatsApp Business Account ID:", waBaId);
+
+      // Fetch message templates from Facebook Business Manager
+      const templatesResponse = await fetch(`https://graph.facebook.com/v21.0/${waBaId}/message_templates?limit=100`, {
+        headers: {
+          "Authorization": `Bearer ${this.config.whatsappAccessToken}`,
+        },
+      });
+
+      const templatesData = await templatesResponse.json();
+
+      if (!templatesResponse.ok) {
+        console.error("❌ Failed to fetch templates:", templatesData);
+        return { success: false, error: templatesData.error?.message || "Failed to fetch templates" };
+      }
+
+      const approvedTemplates = templatesData.data?.filter((template: any) => template.status === "APPROVED") || [];
+      
+      console.log(`📋 Found ${approvedTemplates.length} approved templates from Facebook Business Manager`);
+      
+      return { success: true, templates: approvedTemplates };
+    } catch (error) {
+      console.error("❌ Template sync failed:", error);
+      return { success: false, error: error instanceof Error ? error.message : "Unknown error" };
+    }
+  }
 }

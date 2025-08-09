@@ -94,6 +94,27 @@ export default function TemplateManager() {
     },
   });
 
+  const syncMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("POST", "/api/templates/sync");
+      return response.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/templates"] });
+      toast({
+        title: "Templates synced successfully",
+        description: `${data.synced} templates synchronized from Facebook Business Manager`,
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to sync templates",
+        description: error.message || "Check your WhatsApp configuration in Settings",
+        variant: "destructive",
+      });
+    },
+  });
+
   const resetForm = () => {
     setFormData({
       name: "",
@@ -164,13 +185,23 @@ export default function TemplateManager() {
           <h2 className="text-2xl font-bold text-gray-800">Message Templates</h2>
           <p className="text-gray-600 mt-1">Create and manage your WhatsApp message templates</p>
         </div>
-        <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-          <DialogTrigger asChild>
-            <Button className="whatsapp-green" data-testid="button-new-template">
-              <i className="fas fa-plus mr-2" />
-              New Template
-            </Button>
-          </DialogTrigger>
+        <div className="flex gap-2">
+          <Button 
+            variant="outline" 
+            onClick={() => syncMutation.mutate()}
+            disabled={syncMutation.isPending}
+            data-testid="button-sync-templates"
+          >
+            <i className="fas fa-sync-alt mr-2" />
+            {syncMutation.isPending ? "Syncing..." : "Sync from Facebook"}
+          </Button>
+          <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+            <DialogTrigger asChild>
+              <Button className="whatsapp-green" data-testid="button-new-template">
+                <i className="fas fa-plus mr-2" />
+                New Template
+              </Button>
+            </DialogTrigger>
           <DialogContent className="max-w-2xl">
             <DialogHeader>
               <DialogTitle>{editingTemplate ? "Edit Template" : "Create New Template"}</DialogTitle>
@@ -241,7 +272,8 @@ export default function TemplateManager() {
               </div>
             </form>
           </DialogContent>
-        </Dialog>
+          </Dialog>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

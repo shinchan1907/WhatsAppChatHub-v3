@@ -5,7 +5,6 @@ import MessageBubble from "./message-bubble";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { Message, ConversationWithContact, Template } from "@shared/schema";
@@ -212,46 +211,57 @@ export default function ChatInterface({ selectedConversationId, onConversationSe
                   accept="image/*,video/*,audio/*,.pdf,.doc,.docx"
                 />
                 
-                <Popover open={showTemplateSelector} onOpenChange={setShowTemplateSelector}>
-                  <PopoverTrigger asChild>
+                {showTemplateSelector ? (
+                  <div className="relative">
                     <Button 
                       variant="ghost" 
                       size="icon" 
-                      className="text-gray-600 hover:text-green-600" 
-                      data-testid="button-template"
+                      className="text-green-600 bg-green-50" 
+                      onClick={() => setShowTemplateSelector(false)}
+                      data-testid="button-template-close"
                     >
-                      <i className="fas fa-file-alt" />
+                      <i className="fas fa-times" />
                     </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-80 p-3">
-                    <div className="space-y-3">
-                      <h4 className="font-medium text-sm">Send Template Message</h4>
-                      {templates.length === 0 ? (
-                        <p className="text-sm text-gray-500">No templates available. Create templates in the Templates section.</p>
-                      ) : (
-                        <div className="space-y-2">
-                          {templates.map((template) => (
-                            <Button
-                              key={template.id}
-                              variant="outline"
-                              size="sm"
-                              className="w-full justify-start text-left"
-                              onClick={() => handleSendTemplate(template.id)}
-                              disabled={isSending}
-                            >
-                              <div>
-                                <div className="font-medium">{template.name}</div>
-                                <div className="text-xs text-gray-500 truncate">
-                                  {template.content.substring(0, 50)}...
+                    <div className="absolute bottom-full left-0 mb-2 w-80 bg-white border rounded-lg shadow-lg p-3 z-50">
+                      <div className="space-y-3">
+                        <h4 className="font-medium text-sm">Send Template Message</h4>
+                        {templates.length === 0 ? (
+                          <p className="text-sm text-gray-500">No templates available. Sync templates from Facebook Business Manager.</p>
+                        ) : (
+                          <div className="space-y-2 max-h-40 overflow-y-auto">
+                            {templates.map((template) => (
+                              <Button
+                                key={template.id}
+                                variant="outline"
+                                size="sm"
+                                className="w-full justify-start text-left"
+                                onClick={() => handleSendTemplate(template.id)}
+                                disabled={isSending}
+                              >
+                                <div>
+                                  <div className="font-medium">{template.name}</div>
+                                  <div className="text-xs text-gray-500 truncate">
+                                    {template.content.substring(0, 50)}...
+                                  </div>
                                 </div>
-                              </div>
-                            </Button>
-                          ))}
-                        </div>
-                      )}
+                              </Button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </PopoverContent>
-                </Popover>
+                  </div>
+                ) : (
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    className="text-gray-600 hover:text-green-600" 
+                    onClick={() => setShowTemplateSelector(true)}
+                    data-testid="button-template"
+                  >
+                    <i className="fas fa-file-alt" />
+                  </Button>
+                )}
                 
                 <div className="flex-1 relative">
                   <Input

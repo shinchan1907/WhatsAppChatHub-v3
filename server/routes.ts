@@ -318,6 +318,60 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Sync templates from Facebook Business Manager
+  app.post("/api/templates/sync", requireAuth, async (req: any, res) => {
+    try {
+      const userId = req.session.userId;
+      const config = await storage.getAppConfig(userId);
+      
+      if (!config || !config.whatsappAccessToken || !config.whatsappPhoneNumberId) {
+        return res.status(400).json({ 
+          message: "WhatsApp configuration is incomplete. Please configure your WhatsApp access token and phone number ID." 
+        });
+      }
+
+      const whatsappService = new WhatsAppAPIService(config);
+      const syncResult = await whatsappService.syncTemplatesFromFBM();
+
+      if (!syncResult.success) {
+        return res.status(400).json({ message: syncResult.error });
+      }
+
+      // Save templates to database
+      let syncedCount = 0;
+      for (const fbTemplate of syncResult.templates || []) {
+        try {
+          // Extract template content from Facebook template structure
+          let content = fbTemplate.components?.find((c: any) => c.type === "BODY")?.text || fbTemplate.name;
+          
+          const templateData = {
+            name: fbTemplate.name,
+            content: content,
+            language: fbTemplate.language || "en",
+            category: fbTemplate.category || "MARKETING",
+            status: "approved",
+            variables: fbTemplate.components?.find((c: any) => c.type === "BODY")?.example?.body_text?.[0] || [],
+            facebookTemplateId: fbTemplate.id
+          };
+
+          await storage.createTemplate(templateData);
+          syncedCount++;
+        } catch (error) {
+          console.warn(`Failed to sync template ${fbTemplate.name}:`, error);
+        }
+      }
+
+      res.json({ 
+        message: `Successfully synced ${syncedCount} templates from Facebook Business Manager`,
+        synced: syncedCount,
+        total: syncResult.templates?.length || 0 
+      });
+    } catch (error) {
+      console.error("Template sync error:", error);
+      res.status(500).json({ message: "Failed to sync templates" });
+    }
+  });
+
   // Broadcast routes
   app.get("/api/broadcasts", requireAuth, async (req, res) => {
     try {

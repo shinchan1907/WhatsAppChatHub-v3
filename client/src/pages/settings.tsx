@@ -377,11 +377,11 @@ export default function Settings() {
                 <div>
                   <Label>Webhook Secret</Label>
                   <Input
-                    value={configData.webhookSecret ? (showTokens ? configData.webhookSecret : "•".repeat(20)) : ""}
+                    value={configData.webhookSecret || "Not generated"}
                     readOnly
                     className="bg-gray-50"
                   />
-                  <p className="text-xs text-gray-500 mt-1">Auto-generated secure token</p>
+                  <p className="text-xs text-gray-500 mt-1">Use this token when configuring webhooks in Facebook Developer Console</p>
                 </div>
               </CardContent>
             </Card>

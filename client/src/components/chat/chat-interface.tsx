@@ -1,12 +1,14 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import ChatList from "./chat-list";
 import MessageBubble from "./message-bubble";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { Message, ConversationWithContact } from "@shared/schema";
+import { Message, ConversationWithContact, Template } from "@shared/schema";
 
 interface ChatInterfaceProps {
   selectedConversationId: string | null;
@@ -16,6 +18,8 @@ interface ChatInterfaceProps {
 export default function ChatInterface({ selectedConversationId, onConversationSelect }: ChatInterfaceProps) {
   const [messageText, setMessageText] = useState("");
   const [isSending, setIsSending] = useState(false);
+  const [showTemplateSelector, setShowTemplateSelector] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
   const { data: conversations = [] } = useQuery<ConversationWithContact[]>({
@@ -25,6 +29,10 @@ export default function ChatInterface({ selectedConversationId, onConversationSe
   const { data: messages = [], isLoading: messagesLoading } = useQuery<Message[]>({
     queryKey: ["/api/conversations", selectedConversationId, "messages"],
     enabled: !!selectedConversationId,
+  });
+
+  const { data: templates = [] } = useQuery<Template[]>({
+    queryKey: ["/api/templates"],
   });
 
   const selectedConversation = conversations.find(c => c.id === selectedConversationId);
@@ -46,10 +54,7 @@ export default function ChatInterface({ selectedConversationId, onConversationSe
       });
 
       setMessageText("");
-      toast({
-        title: "Message sent",
-        description: "Your message has been sent successfully.",
-      });
+      // Subtle success feedback - message status will show in bubble
     } catch (error) {
       toast({
         title: "Failed to send message",
@@ -65,6 +70,49 @@ export default function ChatInterface({ selectedConversationId, onConversationSe
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSendMessage();
+    }
+  };
+
+  const handleFileUpload = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      toast({
+        title: "File selected",
+        description: `${file.name} - File upload feature coming soon!`,
+        variant: "default"
+      });
+    }
+  };
+
+  const handleSendTemplate = async (templateId: string) => {
+    if (!selectedConversationId || isSending) return;
+
+    setIsSending(true);
+    try {
+      await apiRequest("POST", "/api/messages", {
+        conversationId: selectedConversationId,
+        contactId: selectedConversation?.contactId,
+        content: "Template message sent",
+        type: "template",
+        direction: "outbound",
+        status: "sent",
+        templateId: templateId,
+        metadata: null,
+      });
+
+      setShowTemplateSelector(false);
+    } catch (error) {
+      toast({
+        title: "Failed to send template",
+        description: "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSending(false);
     }
   };
 
@@ -106,25 +154,19 @@ export default function ChatInterface({ selectedConversationId, onConversationSe
             {/* Chat Header */}
             <div className="bg-gray-50 p-4 border-b border-gray-200 flex items-center justify-between">
               <div className="flex items-center space-x-3">
-                <img
-                  src={selectedConversation.contact.profileImageUrl || "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?ixlib=rb-4.0.3&w=40&h=40&fit=crop&crop=face"}
-                  alt="Contact profile"
-                  className="w-10 h-10 rounded-full object-cover"
-                />
+                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-green-400 to-green-600 flex items-center justify-center text-white shadow-md">
+                  <span className="text-sm font-medium">
+                    {selectedConversation.contact.name.charAt(0).toUpperCase()}
+                  </span>
+                </div>
                 <div>
                   <h3 className="font-medium text-gray-900" data-testid="text-contact-name">
                     {selectedConversation.contact.name}
                   </h3>
-                  <p className="text-sm text-gray-500">Online</p>
+                  <p className="text-xs text-gray-500">{selectedConversation.contact.phone}</p>
                 </div>
               </div>
               <div className="flex items-center space-x-2">
-                <Button variant="ghost" size="icon" className="text-gray-600">
-                  <i className="fas fa-phone" />
-                </Button>
-                <Button variant="ghost" size="icon" className="text-gray-600">
-                  <i className="fas fa-video" />
-                </Button>
                 <Button variant="ghost" size="icon" className="text-gray-600">
                   <i className="fas fa-ellipsis-v" />
                 </Button>
@@ -153,12 +195,64 @@ export default function ChatInterface({ selectedConversationId, onConversationSe
             {/* Message Input */}
             <div className="bg-white p-4 border-t border-gray-200">
               <div className="flex items-center space-x-3">
-                <Button variant="ghost" size="icon" className="text-gray-600">
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  className="text-gray-600 hover:text-green-600"
+                  onClick={handleFileUpload}
+                  data-testid="button-upload-file"
+                >
                   <i className="fas fa-paperclip" />
                 </Button>
-                <Button variant="ghost" size="icon" className="text-gray-600" data-testid="button-template">
-                  <i className="fas fa-file-alt" />
-                </Button>
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleFileChange}
+                  style={{ display: 'none' }}
+                  accept="image/*,video/*,audio/*,.pdf,.doc,.docx"
+                />
+                
+                <Popover open={showTemplateSelector} onOpenChange={setShowTemplateSelector}>
+                  <PopoverTrigger asChild>
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      className="text-gray-600 hover:text-green-600" 
+                      data-testid="button-template"
+                    >
+                      <i className="fas fa-file-alt" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-80 p-3">
+                    <div className="space-y-3">
+                      <h4 className="font-medium text-sm">Send Template Message</h4>
+                      {templates.length === 0 ? (
+                        <p className="text-sm text-gray-500">No templates available. Create templates in the Templates section.</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {templates.map((template) => (
+                            <Button
+                              key={template.id}
+                              variant="outline"
+                              size="sm"
+                              className="w-full justify-start text-left"
+                              onClick={() => handleSendTemplate(template.id)}
+                              disabled={isSending}
+                            >
+                              <div>
+                                <div className="font-medium">{template.name}</div>
+                                <div className="text-xs text-gray-500 truncate">
+                                  {template.content.substring(0, 50)}...
+                                </div>
+                              </div>
+                            </Button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </PopoverContent>
+                </Popover>
+                
                 <div className="flex-1 relative">
                   <Input
                     type="text"

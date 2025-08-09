@@ -20,15 +20,15 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
   const getStatusIcon = () => {
     switch (message.status) {
       case "sent":
-        return <i className="fas fa-check text-gray-400 text-xs" />;
+        return <i className="fas fa-check text-gray-400 text-xs" title="Sent" />;
       case "delivered":
-        return <i className="fas fa-check-double text-gray-400 text-xs" />;
+        return <i className="fas fa-check-double text-gray-500 text-xs" title="Delivered" />;
       case "read":
-        return <i className="fas fa-check-double text-blue-500 text-xs" />;
+        return <i className="fas fa-check-double text-green-500 text-xs" title="Read" />;
       case "failed":
-        return <i className="fas fa-exclamation-triangle text-red-500 text-xs" />;
+        return <i className="fas fa-exclamation-triangle text-red-500 text-xs" title="Failed to send" />;
       default:
-        return null;
+        return <i className="fas fa-clock text-gray-300 text-xs" title="Sending..." />;
     }
   };
 

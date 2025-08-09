@@ -69,13 +69,13 @@ export default function ChatInterface({ selectedConversationId, onConversationSe
   };
 
   return (
-    <>
-      {/* Chat List Panel */}
+    <div className="flex h-full bg-gray-100">
+      {/* Chat List Panel - Left Side */}
       <div className="w-80 bg-white border-r border-gray-200 flex flex-col">
-        <div className="bg-gray-50 p-4 border-b border-gray-200">
+        <div className="bg-whatsapp text-white p-4 border-b border-gray-200">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold text-gray-800">Conversations</h2>
-            <Button variant="ghost" size="icon" className="text-gray-600">
+            <h2 className="text-xl font-semibold text-white">Conversations</h2>
+            <Button variant="ghost" size="icon" className="text-white hover:bg-green-600">
               <i className="fas fa-search" />
             </Button>
           </div>
@@ -192,6 +192,6 @@ export default function ChatInterface({ selectedConversationId, onConversationSe
           </div>
         )}
       </div>
-    </>
+    </div>
   );
 }

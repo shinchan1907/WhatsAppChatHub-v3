@@ -12,6 +12,7 @@ const navItems = [
   { id: "templates", icon: "fas fa-file-alt", label: "Templates" },
   { id: "broadcast", icon: "fas fa-bullhorn", label: "Broadcast" },
   { id: "contacts", icon: "fas fa-address-book", label: "Contacts" },
+  { id: "settings", icon: "fas fa-cog", label: "Settings" },
 ];
 
 export default function SidebarNav({ activeTab, onTabChange }: SidebarNavProps) {

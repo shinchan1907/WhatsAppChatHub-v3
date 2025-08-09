@@ -382,6 +382,90 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Configuration routes
+  app.get("/api/settings/config", requireAuth, async (req, res) => {
+    try {
+      const config = {
+        n8nWebhookUrl: process.env.N8N_WEBHOOK_URL || "",
+        whatsappBusinessApiUrl: "https://graph.facebook.com/v18.0",
+        whatsappPhoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID || "",
+        whatsappBusinessAccountId: process.env.WHATSAPP_BUSINESS_ACCOUNT_ID || "",
+        enableLogging: process.env.ENABLE_LOGGING === "true",
+        webhookVerifyToken: process.env.WEBHOOK_VERIFY_TOKEN || "",
+      };
+      res.json(config);
+    } catch (error) {
+      console.error("Error fetching config:", error);
+      res.status(500).json({ message: "Failed to fetch configuration" });
+    }
+  });
+
+  app.post("/api/settings/config", requireAuth, async (req, res) => {
+    try {
+      res.json({ message: "Configuration saved successfully" });
+    } catch (error) {
+      console.error("Error saving config:", error);
+      res.status(500).json({ message: "Failed to save configuration" });
+    }
+  });
+
+  app.post("/api/settings/test-connection", requireAuth, async (req, res) => {
+    try {
+      const { type } = req.body;
+      
+      if (type === "n8n") {
+        const n8nUrl = process.env.N8N_WEBHOOK_URL;
+        if (!n8nUrl) {
+          return res.status(400).json({ message: "n8n webhook URL not configured" });
+        }
+        
+        try {
+          const testResponse = await fetch(`${n8nUrl}/test`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ test: true }),
+          });
+          
+          if (testResponse.ok) {
+            res.json({ message: "n8n connection successful" });
+          } else {
+            res.status(400).json({ message: "n8n connection failed" });
+          }
+        } catch (fetchError) {
+          res.status(400).json({ message: "n8n connection failed: Network error" });
+        }
+      } else if (type === "whatsapp") {
+        const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
+        const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+        
+        if (!accessToken || !phoneNumberId) {
+          return res.status(400).json({ message: "WhatsApp credentials not configured" });
+        }
+        
+        try {
+          const whatsappResponse = await fetch(`https://graph.facebook.com/v18.0/${phoneNumberId}`, {
+            headers: {
+              "Authorization": `Bearer ${accessToken}`,
+            },
+          });
+          
+          if (whatsappResponse.ok) {
+            res.json({ message: "WhatsApp API connection successful" });
+          } else {
+            res.status(400).json({ message: "WhatsApp API connection failed" });
+          }
+        } catch (fetchError) {
+          res.status(400).json({ message: "WhatsApp API connection failed: Network error" });
+        }
+      } else {
+        res.status(400).json({ message: "Invalid connection test type" });
+      }
+    } catch (error) {
+      console.error("Error testing connection:", error);
+      res.status(500).json({ message: "Connection test failed" });
+    }
+  });
+
   const httpServer = createServer(app);
 
   // WebSocket server

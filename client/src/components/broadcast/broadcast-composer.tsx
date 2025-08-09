@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,6 +7,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
+import { Textarea } from "@/components/ui/textarea";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { Template, Contact, Broadcast } from "@shared/schema";
@@ -17,6 +19,10 @@ export default function BroadcastComposer() {
   const [variables, setVariables] = useState<Record<string, string>>({});
   const [scheduledFor, setScheduledFor] = useState<string>("");
   const [isScheduled, setIsScheduled] = useState(false);
+  const [csvData, setCsvData] = useState<any[]>([]);
+  const [isCSVDialogOpen, setIsCSVDialogOpen] = useState(false);
+  const [csvUploadMode, setCSVUploadMode] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -64,6 +70,44 @@ export default function BroadcastComposer() {
     setVariables({});
     setScheduledFor("");
     setIsScheduled(false);
+    setCsvData([]);
+    setCSVUploadMode(false);
+  };
+
+  const handleCSVUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file && file.type === "text/csv") {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const csv = e.target?.result as string;
+        const lines = csv.split('\n').filter(line => line.trim());
+        const headers = lines[0].split(',').map(h => h.trim());
+        
+        const data = lines.slice(1).map(line => {
+          const values = line.split(',').map(v => v.trim());
+          const row: any = {};
+          headers.forEach((header, index) => {
+            row[header] = values[index] || "";
+          });
+          return row;
+        });
+        
+        setCsvData(data);
+        setCSVUploadMode(true);
+        setIsCSVDialogOpen(false);
+        toast({
+          title: "CSV uploaded",
+          description: `Loaded ${data.length} contacts from CSV file.`,
+        });
+      };
+      reader.readAsText(file);
+    } else {
+      toast({
+        title: "Invalid file",
+        description: "Please upload a valid CSV file.",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleContactToggle = (contactId: string) => {
@@ -111,10 +155,19 @@ export default function BroadcastComposer() {
       return;
     }
 
-    if (selectedContacts.size === 0) {
+    if (!csvUploadMode && selectedContacts.size === 0) {
       toast({
         title: "Recipients required",
         description: "Please select at least one recipient for your broadcast.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (csvUploadMode && csvData.length === 0) {
+      toast({
+        title: "CSV data required",
+        description: "Please upload a CSV file with recipient data.",
         variant: "destructive",
       });
       return;
@@ -133,8 +186,9 @@ export default function BroadcastComposer() {
 
     const broadcastData = {
       templateId: selectedTemplateId,
-      recipients: Array.from(selectedContacts),
-      variables,
+      recipients: csvUploadMode ? csvData.map((row, index) => `csv-${index}`) : Array.from(selectedContacts),
+      variables: csvUploadMode ? {} : variables,
+      csvData: csvUploadMode ? csvData : null,
       scheduledFor: isScheduled && scheduledFor ? new Date(scheduledFor) : null,
     };
 
@@ -208,43 +262,129 @@ export default function BroadcastComposer() {
                 <div>
                   <div className="flex items-center justify-between mb-3">
                     <Label>Recipients</Label>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={handleSelectAll}
-                      data-testid="button-select-all-contacts"
-                    >
-                      {selectedContacts.size === contacts.length ? "Deselect All" : "Select All"}
-                    </Button>
+                    <div className="flex items-center space-x-2">
+                      {!csvUploadMode && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={handleSelectAll}
+                          data-testid="button-select-all-contacts"
+                        >
+                          {selectedContacts.size === contacts.length ? "Deselect All" : "Select All"}
+                        </Button>
+                      )}
+                      <Dialog open={isCSVDialogOpen} onOpenChange={setIsCSVDialogOpen}>
+                        <DialogTrigger asChild>
+                          <Button type="button" variant="outline" size="sm" data-testid="button-upload-csv">
+                            <i className="fas fa-upload mr-2" />
+                            Upload CSV
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent>
+                          <DialogHeader>
+                            <DialogTitle>Upload CSV File</DialogTitle>
+                            <DialogDescription>
+                              Upload a CSV file with contact details and template variables. 
+                              Required columns: phone. Optional: name, variables (matching template variables), cta_url.
+                            </DialogDescription>
+                          </DialogHeader>
+                          <div className="space-y-4">
+                            <div>
+                              <Label>CSV File</Label>
+                              <Input
+                                type="file"
+                                accept=".csv"
+                                onChange={handleCSVUpload}
+                                ref={fileInputRef}
+                                data-testid="input-csv-file"
+                              />
+                              <p className="text-sm text-gray-500 mt-1">
+                                CSV format: phone,name,variable1,variable2,cta_url
+                              </p>
+                            </div>
+                            <div className="bg-yellow-50 p-3 rounded-md">
+                              <h4 className="font-medium text-yellow-800 mb-1">CSV Format Example:</h4>
+                              <code className="text-sm text-yellow-700">
+                                phone,name,customer_name,offer_amount,cta_url<br/>
+                                +1234567890,John Doe,John,25%,https://example.com/offer1<br/>
+                                +0987654321,Jane Smith,Jane,30%,https://example.com/offer2
+                              </code>
+                            </div>
+                          </div>
+                        </DialogContent>
+                      </Dialog>
+                      {csvUploadMode && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setCsvData([]);
+                            setCSVUploadMode(false);
+                            if (fileInputRef.current) {
+                              fileInputRef.current.value = "";
+                            }
+                          }}
+                          data-testid="button-clear-csv"
+                        >
+                          Clear CSV
+                        </Button>
+                      )}
+                      <span className="text-sm text-gray-500">
+                        {csvUploadMode ? `${csvData.length} from CSV` : `${selectedContacts.size} selected`}
+                      </span>
+                    </div>
                   </div>
                   
                   <div className="border border-gray-300 rounded-lg p-4 max-h-60 overflow-y-auto">
-                    {contacts.length === 0 ? (
-                      <p className="text-gray-500 text-center py-4">No contacts available</p>
-                    ) : (
-                      <div className="space-y-3">
-                        {contacts.map((contact) => (
-                          <div key={contact.id} className="flex items-center space-x-3">
-                            <Checkbox
-                              id={`contact-${contact.id}`}
-                              checked={selectedContacts.has(contact.id)}
-                              onCheckedChange={() => handleContactToggle(contact.id)}
-                              data-testid={`checkbox-contact-${contact.id}`}
-                            />
-                            <img
-                              src={contact.profileImageUrl || "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?ixlib=rb-4.0.3&w=32&h=32&fit=crop&crop=face"}
-                              alt={contact.name}
-                              className="w-8 h-8 rounded-full object-cover"
-                            />
-                            <div className="flex-1">
-                              <div className="font-medium text-gray-900">{contact.name}</div>
-                              <div className="text-sm text-gray-500">{contact.phone}</div>
+                    {csvUploadMode ? (
+                      csvData.length === 0 ? (
+                        <p className="text-gray-500 text-center py-4">No CSV data loaded</p>
+                      ) : (
+                        <div className="space-y-3">
+                          {csvData.map((row, index) => (
+                            <div key={index} className="flex items-center space-x-3">
+                              <div className="flex-1">
+                                <div className="font-medium text-gray-900">{row.name || 'N/A'}</div>
+                                <div className="text-sm text-gray-500">{row.phone}</div>
+                                {Object.keys(row).filter(key => !['phone', 'name'].includes(key)).map(key => (
+                                  <div key={key} className="text-xs text-gray-400">
+                                    {key}: {row[key]}
+                                  </div>
+                                ))}
+                              </div>
                             </div>
-                            <Badge variant="outline">{contact.group}</Badge>
-                          </div>
-                        ))}
-                      </div>
+                          ))}
+                        </div>
+                      )
+                    ) : (
+                      contacts.length === 0 ? (
+                        <p className="text-gray-500 text-center py-4">No contacts available</p>
+                      ) : (
+                        <div className="space-y-3">
+                          {contacts.map((contact) => (
+                            <div key={contact.id} className="flex items-center space-x-3">
+                              <Checkbox
+                                id={`contact-${contact.id}`}
+                                checked={selectedContacts.has(contact.id)}
+                                onCheckedChange={() => handleContactToggle(contact.id)}
+                                data-testid={`checkbox-contact-${contact.id}`}
+                              />
+                              <img
+                                src={contact.profileImageUrl || "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?ixlib=rb-4.0.3&w=32&h=32&fit=crop&crop=face"}
+                                alt={contact.name}
+                                className="w-8 h-8 rounded-full object-cover"
+                              />
+                              <div className="flex-1">
+                                <div className="font-medium text-gray-900">{contact.name}</div>
+                                <div className="text-sm text-gray-500">{contact.phone}</div>
+                              </div>
+                              <Badge variant="outline">{contact.group || "customer"}</Badge>
+                            </div>
+                          ))}
+                        </div>
+                      )
                     )}
                   </div>
                   

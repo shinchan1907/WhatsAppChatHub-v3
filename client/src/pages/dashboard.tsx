@@ -5,6 +5,7 @@ import ChatInterface from "@/components/chat/chat-interface";
 import TemplateManager from "@/components/templates/template-manager";
 import BroadcastComposer from "@/components/broadcast/broadcast-composer";
 import ContactManager from "@/components/contacts/contact-manager";
+import Settings from "@/pages/settings";
 
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState("chats");
@@ -28,6 +29,8 @@ export default function Dashboard() {
         return <BroadcastComposer />;
       case "contacts":
         return <ContactManager />;
+      case "settings":
+        return <Settings />;
       default:
         return <ChatInterface selectedConversationId={selectedConversationId} onConversationSelect={setSelectedConversationId} />;
     }

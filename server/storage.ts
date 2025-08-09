@@ -445,6 +445,12 @@ export class MemStorage implements IStorage {
       n8nWebhookUrl: config.n8nWebhookUrl || existing?.n8nWebhookUrl || null,
       n8nApiKey: config.n8nApiKey || existing?.n8nApiKey || null,
       n8nEnabled: config.n8nEnabled ?? existing?.n8nEnabled ?? false,
+      usePersistentDb: config.usePersistentDb ?? existing?.usePersistentDb ?? false,
+      dbHost: config.dbHost || existing?.dbHost || null,
+      dbPort: config.dbPort || existing?.dbPort || null,
+      dbName: config.dbName || existing?.dbName || null,
+      dbUsername: config.dbUsername || existing?.dbUsername || null,
+      dbPassword: config.dbPassword || existing?.dbPassword || null,
       enableLogging: config.enableLogging ?? existing?.enableLogging ?? true,
       webhookSecret: config.webhookSecret || existing?.webhookSecret || randomUUID(),
       isConfigured: config.isConfigured ?? (

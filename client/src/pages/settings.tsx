@@ -19,6 +19,12 @@ interface ConfigData {
   n8nWebhookUrl: string;
   n8nApiKey: string;
   n8nEnabled: boolean;
+  usePersistentDb: boolean;
+  dbHost: string;
+  dbPort: string;
+  dbName: string;
+  dbUsername: string;
+  dbPassword: string;
   enableLogging: boolean;
   webhookSecret: string;
   isConfigured: boolean;
@@ -33,6 +39,12 @@ export default function Settings() {
     n8nWebhookUrl: "",
     n8nApiKey: "",
     n8nEnabled: false,
+    usePersistentDb: false,
+    dbHost: "",
+    dbPort: "",
+    dbName: "",
+    dbUsername: "",
+    dbPassword: "",
     enableLogging: true,
     webhookSecret: "",
     isConfigured: false,
@@ -429,6 +441,95 @@ export default function Settings() {
           </TabsContent>
 
           <TabsContent value="system" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Database Configuration</CardTitle>
+                <CardDescription>
+                  Configure database storage for persistent data
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label htmlFor="usePersistentDb">Use PostgreSQL Database</Label>
+                    <p className="text-sm text-gray-500">Enable persistent storage instead of in-memory storage</p>
+                  </div>
+                  <Switch
+                    id="usePersistentDb"
+                    checked={configData.usePersistentDb || false}
+                    onCheckedChange={(checked) => handleInputChange("usePersistentDb", checked)}
+                    data-testid="switch-persistent-db"
+                  />
+                </div>
+
+                {configData.usePersistentDb && (
+                  <div className="space-y-4 border-l-4 border-blue-200 pl-4 bg-blue-50 p-4 rounded">
+                    <h4 className="font-medium text-blue-900">Database Connection Details</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <Label htmlFor="dbHost">Host</Label>
+                        <Input
+                          id="dbHost"
+                          value={configData.dbHost || ""}
+                          onChange={(e) => handleInputChange("dbHost", e.target.value)}
+                          placeholder="localhost or IP address"
+                          data-testid="input-db-host"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="dbPort">Port</Label>
+                        <Input
+                          id="dbPort"
+                          type="number"
+                          value={configData.dbPort || ""}
+                          onChange={(e) => handleInputChange("dbPort", e.target.value)}
+                          placeholder="5432"
+                          data-testid="input-db-port"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="dbName">Database Name</Label>
+                        <Input
+                          id="dbName"
+                          value={configData.dbName || ""}
+                          onChange={(e) => handleInputChange("dbName", e.target.value)}
+                          placeholder="whatsapp_business"
+                          data-testid="input-db-name"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="dbUsername">Username</Label>
+                        <Input
+                          id="dbUsername"
+                          value={configData.dbUsername || ""}
+                          onChange={(e) => handleInputChange("dbUsername", e.target.value)}
+                          placeholder="postgres"
+                          data-testid="input-db-username"
+                        />
+                      </div>
+                      <div className="md:col-span-2">
+                        <Label htmlFor="dbPassword">Password</Label>
+                        <Input
+                          id="dbPassword"
+                          type="password"
+                          value={configData.dbPassword || ""}
+                          onChange={(e) => handleInputChange("dbPassword", e.target.value)}
+                          placeholder="Enter database password"
+                          data-testid="input-db-password"
+                        />
+                      </div>
+                    </div>
+                    <div className="bg-amber-50 p-3 rounded border border-amber-200">
+                      <p className="text-xs text-amber-800">
+                        <strong>Note:</strong> Enabling PostgreSQL will persist all chat conversations, contacts, and settings. 
+                        Data will be preserved between sessions and server restarts.
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
             <Card>
               <CardHeader>
                 <CardTitle>System Configuration</CardTitle>

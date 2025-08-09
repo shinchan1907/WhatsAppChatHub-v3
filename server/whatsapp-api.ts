@@ -58,6 +58,9 @@ export class WhatsAppAPIService {
       return { success: false, error: "WhatsApp credentials not configured" };
     }
 
+    console.log("📡 Making WhatsApp API request to:", `${this.baseUrl}/${this.config.whatsappPhoneNumberId}/messages`);
+    console.log("📤 Message payload:", JSON.stringify(message, null, 2));
+
     try {
       const response = await fetch(`${this.baseUrl}/${this.config.whatsappPhoneNumberId}/messages`, {
         method: "POST",
@@ -69,16 +72,20 @@ export class WhatsAppAPIService {
       });
 
       const result = await response.json();
+      console.log("📨 WhatsApp API response:", JSON.stringify(result, null, 2));
 
       if (response.ok && result.messages?.[0]?.id) {
+        console.log("✅ Message sent successfully with ID:", result.messages[0].id);
         return { success: true, messageId: result.messages[0].id };
       } else {
+        console.log("❌ WhatsApp API error response:", result);
         return { 
           success: false, 
-          error: result.error?.message || "Failed to send message" 
+          error: result.error?.message || `HTTP ${response.status}: ${response.statusText}` 
         };
       }
     } catch (error) {
+      console.log("❌ Network error:", error);
       return { 
         success: false, 
         error: error instanceof Error ? error.message : "Network error" 

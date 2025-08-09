@@ -79,6 +79,13 @@ export const appConfig = pgTable("app_config", {
   n8nWebhookUrl: text("n8n_webhook_url"),
   n8nApiKey: text("n8n_api_key"),
   n8nEnabled: boolean("n8n_enabled").default(false),
+  // Database Configuration
+  usePersistentDb: boolean("use_persistent_db").default(false),
+  dbHost: text("db_host"),
+  dbPort: text("db_port"),
+  dbName: text("db_name"),
+  dbUsername: text("db_username"),
+  dbPassword: text("db_password"),
   // System Configuration
   enableLogging: boolean("enable_logging").default(true),
   webhookSecret: text("webhook_secret"),

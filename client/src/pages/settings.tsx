@@ -65,7 +65,8 @@ export default function Settings() {
   const [connectionStatus, setConnectionStatus] = useState<{
     whatsapp: "unknown" | "testing" | "success" | "failed";
     n8n: "unknown" | "testing" | "success" | "failed";
-  }>({ whatsapp: "unknown", n8n: "unknown" });
+    cdn: "unknown" | "testing" | "success" | "failed";
+  }>({ whatsapp: "unknown", n8n: "unknown", cdn: "unknown" });
 
   const [showTokens, setShowTokens] = useState(false);
 
@@ -105,9 +106,9 @@ export default function Settings() {
   });
 
   const testConnectionMutation = useMutation({
-    mutationFn: async (type: "n8n" | "whatsapp") => {
+    mutationFn: async (type: "n8n" | "whatsapp" | "cdn") => {
       setConnectionStatus(prev => ({ ...prev, [type]: "testing" }));
-      const response = await apiRequest("POST", `/api/settings/test-connection`, { type });
+      const response = await apiRequest("POST", `/api/settings/test-connection`, { type, config: configData });
       return { type, result: await response.json() };
     },
     onSuccess: ({ type, result }) => {
@@ -428,6 +429,22 @@ export default function Settings() {
                     <li>Thumbnail generation for videos</li>
                     <li>Download links for documents</li>
                   </ul>
+                </div>
+
+                <div className="flex justify-between items-center pt-4 border-t">
+                  <div className="text-sm text-gray-600">
+                    CDN Status: {connectionStatus.cdn === "success" ? "✓ Connected" : 
+                               connectionStatus.cdn === "failed" ? "✗ Failed" : "Not tested"}
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => testConnectionMutation.mutate("cdn")}
+                    disabled={testConnectionMutation.isPending || configData.cdnType === "none"}
+                    data-testid="button-test-cdn"
+                  >
+                    {testConnectionMutation.isPending ? "Testing..." : "Test CDN Connection"}
+                  </Button>
                 </div>
               </CardContent>
             </Card>

@@ -73,88 +73,119 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
           </p>
           
           {/* Media content */}
-          {message.type === "media" && metadata && (
+          {metadata?.mediaUrl && (
             <div className="mt-2">
-              {metadata.mediaType?.startsWith('image/') && (
-                <div className="relative">
-                  {metadata.mediaUrl ? (
-                    <img
-                      src={metadata.mediaUrl}
-                      alt={metadata.filename || "Image"}
-                      className="max-w-full max-h-80 rounded-lg object-cover cursor-pointer hover:opacity-90 transition-opacity"
-                      onClick={() => window.open(metadata.mediaUrl, '_blank')}
-                      loading="lazy"
-                    />
-                  ) : (
-                    <div className="bg-gray-100 rounded-lg p-4 flex items-center justify-center min-h-[100px]">
-                      <span className="text-gray-600">🖼️ Image</span>
-                    </div>
-                  )}
-                  {metadata.filename && (
-                    <div className="text-xs text-gray-500 mt-1">
-                      📎 {metadata.filename}
-                    </div>
-                  )}
-                </div>
-              )}
-              
-              {metadata.mediaType?.startsWith('video/') && (
-                <div className="relative">
-                  {metadata.mediaUrl ? (
-                    <video
-                      src={metadata.mediaUrl}
-                      controls
-                      className="max-w-full max-h-80 rounded-lg"
-                      poster={metadata.thumbnailUrl}
-                    >
-                      Your browser does not support the video tag.
-                    </video>
-                  ) : (
-                    <div className="bg-gray-100 rounded-lg p-4 flex items-center justify-center min-h-[100px]">
-                      <span className="text-gray-600">🎥 Video</span>
-                    </div>
-                  )}
-                  {metadata.filename && (
-                    <div className="text-xs text-gray-500 mt-1">
-                      📎 {metadata.filename}
-                    </div>
+              {metadata.mediaType?.startsWith('image/') ? (
+                <div className="rounded-lg overflow-hidden">
+                  <img
+                    src={metadata.mediaUrl}
+                    alt={metadata.filename || 'Image'}
+                    className="max-w-full h-auto max-h-64 object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                    onClick={() => window.open(metadata.mediaUrl, '_blank')}
+                    onError={(e) => {
+                      const target = e.target as HTMLImageElement;
+                      target.style.display = 'none';
+                      const parent = target.parentElement;
+                      if (parent) {
+                        parent.innerHTML = `<div class="p-3 bg-gray-100 rounded text-sm text-gray-600">📷 Image: ${metadata.filename || 'attachment'}</div>`;
+                      }
+                    }}
+                  />
+                  {metadata.caption && (
+                    <p className="text-sm text-gray-600 mt-1 italic">{metadata.caption}</p>
                   )}
                 </div>
-              )}
-              
-              {metadata.mediaType && !metadata.mediaType.startsWith('image/') && !metadata.mediaType.startsWith('video/') && (
-                <div className="bg-gray-50 rounded border p-3">
-                  <div className="flex items-center">
-                    <span className="text-gray-400 text-lg">📄</span>
-                    <div className="ml-2">
-                      <div className="text-sm font-medium text-gray-700">
-                        {metadata.filename || "Document"}
-                      </div>
-                      <div className="text-xs text-gray-500">
-                        {metadata.mediaType || "Unknown type"}
-                      </div>
-                      {metadata.mediaUrl && (
-                        <a
-                          href={metadata.mediaUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-xs text-blue-500 hover:underline"
-                        >
-                          Download
-                        </a>
+              ) : metadata.mediaType?.startsWith('video/') ? (
+                <div className="rounded-lg overflow-hidden">
+                  <video
+                    src={metadata.mediaUrl}
+                    controls
+                    className="max-w-full h-auto max-h-64 object-cover"
+                    poster={metadata.thumbnailUrl}
+                    onError={(e) => {
+                      const target = e.target as HTMLVideoElement;
+                      target.style.display = 'none';
+                      const parent = target.parentElement;
+                      if (parent) {
+                        parent.innerHTML = `<div class="p-3 bg-gray-100 rounded text-sm text-gray-600">🎥 Video: ${metadata.filename || 'attachment'}</div>`;
+                      }
+                    }}
+                  >
+                    Your browser does not support the video tag.
+                  </video>
+                  {metadata.caption && (
+                    <p className="text-sm text-gray-600 mt-1 italic">{metadata.caption}</p>
+                  )}
+                </div>
+              ) : metadata.mediaType?.startsWith('audio/') ? (
+                <div className="p-3 bg-gray-100 rounded-lg">
+                  <div className="flex items-center space-x-2 mb-2">
+                    <span className="text-lg">🎵</span>
+                    <span className="text-sm font-medium text-gray-700">
+                      {metadata.filename || 'Audio message'}
+                    </span>
+                  </div>
+                  <audio
+                    src={metadata.mediaUrl}
+                    controls
+                    className="w-full"
+                    onError={(e) => {
+                      const target = e.target as HTMLAudioElement;
+                      target.style.display = 'none';
+                      const parent = target.parentElement;
+                      if (parent) {
+                        const errorDiv = document.createElement('div');
+                        errorDiv.innerHTML = '<p class="text-xs text-red-500">Audio playback not supported</p>';
+                        parent.appendChild(errorDiv);
+                      }
+                    }}
+                  >
+                    Your browser does not support the audio tag.
+                  </audio>
+                </div>
+              ) : (
+                <div className="p-3 bg-gray-100 rounded-lg border border-gray-200">
+                  <div className="flex items-center space-x-2">
+                    <span className="text-lg">📎</span>
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-gray-700">
+                        {metadata.filename || 'Document'}
+                      </p>
+                      {metadata.attachment?.size && (
+                        <p className="text-xs text-gray-500">{metadata.attachment.size}</p>
                       )}
                     </div>
+                    <a
+                      href={metadata.mediaUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs bg-blue-500 text-white px-2 py-1 rounded hover:bg-blue-600 transition-colors"
+                    >
+                      Download
+                    </a>
                   </div>
-                </div>
-              )}
-              
-              {metadata.caption && (
-                <div className="text-sm text-gray-600 mt-2">
-                  {metadata.caption}
                 </div>
               )}
             </div>
           )}
+
+          {/* Fallback for attachment info without URL */}
+          {!metadata?.mediaUrl && metadata?.attachment && (
+            <div className="mt-2 p-3 bg-gray-100 rounded-lg border border-gray-200">
+              <div className="flex items-center space-x-2">
+                <span className="text-lg">📎</span>
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-gray-700">
+                    {metadata.attachment.name || 'Attachment'}
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    {metadata.attachment.type} {metadata.attachment.size && `• ${metadata.attachment.size}`}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
 
           {/* Template metadata */}
           {message.type === "template" && metadata && (

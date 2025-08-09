@@ -622,7 +622,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/settings/test-connection", requireAuth, async (req: any, res) => {
     try {
-      const { type } = req.body;
+      const { type, config: providedConfig } = req.body;
       const userId = req.session.userId;
       const config = await storage.getAppConfig(userId);
       
@@ -666,6 +666,56 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
         } catch (fetchError) {
           res.status(400).json({ message: "WhatsApp API connection failed: Network error" });
+        }
+      } else if (type === "cdn") {
+        const cdnConfig = providedConfig || config;
+        
+        if (!cdnConfig?.cdnType || cdnConfig.cdnType === "none") {
+          return res.status(400).json({ message: "CDN not configured" });
+        }
+        
+        try {
+          if (cdnConfig.cdnType === "bunny") {
+            if (!cdnConfig.bunnyApiKey || !cdnConfig.bunnyStorageZone) {
+              return res.status(400).json({ message: "Bunny CDN credentials not configured" });
+            }
+            
+            // Test Bunny CDN API connection
+            const bunnyResponse = await fetch(`https://api.bunny.net/storage/${cdnConfig.bunnyStorageZone}/`, {
+              method: "GET",
+              headers: {
+                "AccessKey": cdnConfig.bunnyApiKey,
+              },
+            });
+            
+            if (bunnyResponse.ok) {
+              res.json({ message: "Bunny CDN connection successful" });
+            } else {
+              const result = await bunnyResponse.text();
+              res.status(400).json({ message: `Bunny CDN connection failed: ${result}` });
+            }
+          } else if (cdnConfig.cdnType === "custom" && cdnConfig.cdnBaseUrl) {
+            // Test custom CDN by checking if base URL is accessible
+            const customResponse = await fetch(cdnConfig.cdnBaseUrl, {
+              method: "HEAD",
+              timeout: 10000,
+            });
+            
+            if (customResponse.ok) {
+              res.json({ message: "Custom CDN connection successful" });
+            } else {
+              res.status(400).json({ message: "Custom CDN connection failed" });
+            }
+          } else if (cdnConfig.cdnType === "aws") {
+            res.json({ message: "AWS S3 connection test not implemented yet" });
+          } else if (cdnConfig.cdnType === "cloudinary") {
+            res.json({ message: "Cloudinary connection test not implemented yet" });
+          } else {
+            res.status(400).json({ message: "Unsupported CDN type" });
+          }
+        } catch (fetchError) {
+          console.error("CDN test error:", fetchError);
+          res.status(400).json({ message: "CDN connection failed: Network error" });
         }
       } else {
         res.status(400).json({ message: "Invalid connection test type" });

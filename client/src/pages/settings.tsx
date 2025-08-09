@@ -162,6 +162,14 @@ export default function Settings() {
             </AlertDescription>
           </Alert>
         )}
+
+        {configData.whatsappPhoneNumberId && !configData.whatsappAccessToken && (
+          <Alert className="mt-4 border-red-200 bg-red-50">
+            <AlertDescription className="text-red-800">
+              ⚠️ Missing WhatsApp Access Token! You have Phone Number ID configured but messages cannot be sent without the Access Token. Please add it in the WhatsApp Business tab.
+            </AlertDescription>
+          </Alert>
+        )}
       </div>
 
       <Tabs defaultValue="whatsapp" className="space-y-6">

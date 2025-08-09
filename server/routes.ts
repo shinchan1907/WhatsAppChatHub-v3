@@ -239,6 +239,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         } else {
           // No delivery method configured
           console.error("❌ No delivery method configured - missing WhatsApp credentials");
+          
+          if (config?.whatsappPhoneNumberId && !config?.whatsappAccessToken) {
+            console.error("📱 Phone Number ID found but Access Token missing!");
+            console.error("💡 Solution: Go to Settings → WhatsApp Business → Add your Access Token");
+          }
+          
           console.log("Config status:", {
             hasConfig: !!config,
             hasAccessToken: !!config?.whatsappAccessToken,

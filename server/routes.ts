@@ -198,23 +198,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Send via WhatsApp API for outbound messages
       if (messageData.direction === "outbound") {
         const config = await storage.getAppConfig(userId);
+        console.log("📤 Sending outbound message, config:", config ? "found" : "not found");
         
-        if (config && config.isConfigured) {
+        if (config && config.whatsappAccessToken && config.whatsappPhoneNumberId) {
+          console.log("🚀 Using direct WhatsApp API");
           // Use direct WhatsApp API
           const whatsappService = new WhatsAppAPIService(config);
           const contact = await storage.getContact(messageData.contactId);
           
           if (contact?.phone) {
+            console.log("📞 Sending to phone:", contact.phone);
             const result = await whatsappService.sendTextMessage(contact.phone, messageData.content);
             
             if (result.success) {
+              console.log("✅ Message sent successfully");
               await storage.updateMessageStatus(message.id, "delivered");
             } else {
+              console.error("❌ WhatsApp API send error:", result.error);
               await storage.updateMessageStatus(message.id, "failed");
-              console.error("WhatsApp API send error:", result.error);
             }
+          } else {
+            console.error("❌ No phone number found for contact");
+            await storage.updateMessageStatus(message.id, "failed");
           }
         } else if (config?.n8nEnabled && config?.n8nWebhookUrl) {
+          console.log("🔄 Using n8n fallback");
           // Fallback to n8n if configured
           try {
             const contact = await storage.getContact(messageData.contactId);
@@ -222,15 +230,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
               phone: contact?.phone,
               message: messageData.content,
               messageId: message.id,
-            });
+            }, config);
+            await storage.updateMessageStatus(message.id, "sent");
           } catch (n8nError) {
-            console.error("n8n send error:", n8nError);
+            console.error("❌ n8n send error:", n8nError);
             await storage.updateMessageStatus(message.id, "failed");
           }
         } else {
           // No delivery method configured
+          console.error("❌ No delivery method configured - missing WhatsApp credentials");
+          console.log("Config status:", {
+            hasConfig: !!config,
+            hasAccessToken: !!config?.whatsappAccessToken,
+            hasPhoneNumberId: !!config?.whatsappPhoneNumberId,
+            isConfigured: config?.isConfigured,
+            n8nEnabled: config?.n8nEnabled
+          });
           await storage.updateMessageStatus(message.id, "failed");
-          console.error("No delivery method configured");
         }
       }
       

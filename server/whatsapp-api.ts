@@ -1,6 +1,7 @@
 import type { AppConfig } from "@shared/schema";
 
 export interface WhatsAppMessage {
+  messaging_product: string;
   to: string;
   type: "text" | "template";
   text?: { body: string };
@@ -126,6 +127,7 @@ export class WhatsAppAPIService {
     }
 
     const message: WhatsAppMessage = {
+      messaging_product: "whatsapp",
       to: to.replace(/[^\d+]/g, ""), // Clean phone number
       type: "template",
       template: {
@@ -140,6 +142,7 @@ export class WhatsAppAPIService {
 
   async sendTextMessage(to: string, text: string): Promise<{ success: boolean; messageId?: string; error?: string }> {
     const message: WhatsAppMessage = {
+      messaging_product: "whatsapp",
       to: to.replace(/[^\d+]/g, ""), // Clean phone number
       type: "text",
       text: { body: text }

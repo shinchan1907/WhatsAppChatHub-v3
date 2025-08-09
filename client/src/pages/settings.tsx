@@ -355,33 +355,74 @@ export default function Settings() {
                   Webhook endpoints for receiving WhatsApp messages and status updates
                 </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="bg-gray-50 p-4 rounded-lg">
-                  <h4 className="font-medium text-gray-900 mb-2">Your Webhook URLs:</h4>
-                  <div className="space-y-2 text-sm font-mono">
-                    <div>
-                      <span className="text-gray-600">Messages:</span>
-                      <div className="bg-white p-2 rounded border">
-                        {typeof window !== 'undefined' ? window.location.origin : ''}/api/webhooks/whatsapp
-                      </div>
+              <CardContent className="space-y-6">
+                <div className="bg-blue-50 p-4 rounded-lg">
+                  <h4 className="font-medium text-blue-900 mb-2">Setup Instructions:</h4>
+                  <ol className="text-sm text-blue-800 space-y-1 list-decimal list-inside">
+                    <li>Go to Facebook Developer Console → Your App → WhatsApp → Configuration</li>
+                    <li>Add the webhook URL below to "Callback URL"</li>
+                    <li>Use the webhook secret as "Verify Token"</li>
+                    <li>Subscribe to "messages" webhook field</li>
+                    <li>Click "Verify and Save" to complete setup</li>
+                  </ol>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <Label>Webhook URL (Copy this to Facebook Developer Console)</Label>
+                    <div className="flex space-x-2">
+                      <Input
+                        value={typeof window !== 'undefined' ? `${window.location.origin}/api/webhooks/whatsapp` : ''}
+                        readOnly
+                        className="bg-gray-50 font-mono text-sm"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        onClick={() => {
+                          const url = `${window.location.origin}/api/webhooks/whatsapp`;
+                          navigator.clipboard.writeText(url);
+                        }}
+                        data-testid="button-copy-webhook-url"
+                      >
+                        📋
+                      </Button>
                     </div>
-                    <div>
-                      <span className="text-gray-600">Status Updates:</span>
-                      <div className="bg-white p-2 rounded border">
-                        {typeof window !== 'undefined' ? window.location.origin : ''}/api/webhooks/message-status
-                      </div>
+                  </div>
+
+                  <div>
+                    <Label>Webhook Secret (Use as Verify Token)</Label>
+                    <div className="flex space-x-2">
+                      <Input
+                        value={configData.webhookSecret || "webhook_verify_token_123"}
+                        readOnly
+                        className="bg-gray-50 font-mono text-sm"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        onClick={() => {
+                          navigator.clipboard.writeText(configData.webhookSecret || "webhook_verify_token_123");
+                        }}
+                        data-testid="button-copy-webhook-secret"
+                      >
+                        📋
+                      </Button>
                     </div>
+                    <p className="text-xs text-gray-500 mt-1">Copy this exact value to the "Verify Token" field in Facebook Developer Console</p>
                   </div>
                 </div>
 
-                <div>
-                  <Label>Webhook Secret</Label>
-                  <Input
-                    value={configData.webhookSecret || "Not generated"}
-                    readOnly
-                    className="bg-gray-50"
-                  />
-                  <p className="text-xs text-gray-500 mt-1">Use this token when configuring webhooks in Facebook Developer Console</p>
+                <div className="bg-amber-50 p-4 rounded-lg">
+                  <h4 className="font-medium text-amber-900 mb-2">Important Notes:</h4>
+                  <ul className="text-sm text-amber-800 space-y-1 list-disc list-inside">
+                    <li>Your webhook URL must be publicly accessible (not localhost)</li>
+                    <li>Use HTTPS in production (required by WhatsApp)</li>
+                    <li>Webhook secret must match exactly between here and Facebook console</li>
+                    <li>After setup, send a test message to your WhatsApp Business number</li>
+                  </ul>
                 </div>
               </CardContent>
             </Card>

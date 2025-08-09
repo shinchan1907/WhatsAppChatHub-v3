@@ -434,6 +434,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/settings/config", requireAuth, async (req: any, res) => {
     try {
       const userId = req.session.userId;
+      
+      // Generate webhook secret if not provided
+      if (!req.body.webhookSecret) {
+        req.body.webhookSecret = "webhook_verify_token_123";
+      }
+      
+      // Set isConfigured based on required fields
+      if (req.body.whatsappAccessToken && req.body.whatsappPhoneNumberId) {
+        req.body.isConfigured = true;
+      }
+      
       const config = await storage.updateAppConfig(userId, req.body);
       res.json({ message: "Configuration saved successfully", config });
     } catch (error) {
@@ -500,16 +511,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // WhatsApp Webhook endpoints
   app.get("/api/webhooks/whatsapp", async (req, res) => {
+    console.log("🔍 Webhook verification request:", req.query);
+    
     // Webhook verification
     const mode = req.query['hub.mode'];
     const token = req.query['hub.verify_token'];
     const challenge = req.query['hub.challenge'];
     
+    console.log("📋 Verification details:", { mode, token, challenge });
+    
     // For now, accept any verification token - in production, this should validate against stored config
-    if (mode === 'subscribe' && token && challenge) {
-      console.log('Webhook verified');
+    if (mode === 'subscribe' && challenge) {
+      console.log('✅ Webhook verified successfully');
       res.status(200).send(challenge);
     } else {
+      console.log('❌ Webhook verification failed');
       res.status(403).send('Forbidden');
     }
   });

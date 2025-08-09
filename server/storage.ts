@@ -72,7 +72,8 @@ export interface IStorage {
   getWebhookLogs(limit?: number): Promise<WebhookLog[]>;
 }
 
-export class MemStorage implements IStorage {
+// MemStorage class removed - using DatabaseStorage instead
+class MemStorage implements IStorage {
   private users: Map<string, User> = new Map();
   private contacts: Map<string, Contact> = new Map();
   private conversations: Map<string, Conversation> = new Map();
@@ -499,7 +500,12 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
+    console.log("🔍 DatabaseStorage: Looking for user:", username);
     const [user] = await db.select().from(users).where(eq(users.username, username));
+    console.log("👤 DatabaseStorage: User found:", user ? "yes" : "no");
+    if (user) {
+      console.log("🔑 DatabaseStorage: Password hash length:", user.password.length);
+    }
     return user || undefined;
   }
 

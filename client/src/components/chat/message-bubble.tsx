@@ -55,7 +55,79 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
             {message.content}
           </p>
           
+          {/* Media content */}
+          {message.type === "media" && message.metadata && typeof message.metadata === 'object' && message.metadata && (
+            <div className="mt-2">
+              {(message.metadata as any).mediaType?.startsWith('image/') && (
+                <div className="relative">
+                  <div className="bg-gray-100 rounded-lg p-4 flex items-center justify-center min-h-[100px]">
+                    <i className="fas fa-image text-gray-400 text-2xl" />
+                    <span className="ml-2 text-gray-600">Image</span>
+                  </div>
+                  {(message.metadata as any).filename && (
+                    <div className="text-xs text-gray-500 mt-1">
+                      📎 {(message.metadata as any).filename}
+                    </div>
+                  )}
+                </div>
+              )}
+              
+              {(message.metadata as any).mediaType?.startsWith('video/') && (
+                <div className="relative">
+                  <div className="bg-gray-100 rounded-lg p-4 flex items-center justify-center min-h-[100px]">
+                    <i className="fas fa-video text-gray-400 text-2xl" />
+                    <span className="ml-2 text-gray-600">Video</span>
+                  </div>
+                  {(message.metadata as any).filename && (
+                    <div className="text-xs text-gray-500 mt-1">
+                      📎 {(message.metadata as any).filename}
+                    </div>
+                  )}
+                </div>
+              )}
+              
+              {!(message.metadata as any).mediaType?.startsWith('image/') && 
+               !(message.metadata as any).mediaType?.startsWith('video/') && (
+                <div className="bg-gray-50 rounded border p-3">
+                  <div className="flex items-center">
+                    <i className="fas fa-file text-gray-400 text-lg" />
+                    <div className="ml-2">
+                      <div className="text-sm font-medium text-gray-700">
+                        {(message.metadata as any).filename || "Document"}
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        {(message.metadata as any).mediaType || "Unknown type"}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+              
+              {(message.metadata as any).caption && (
+                <div className="text-sm text-gray-600 mt-2">
+                  {(message.metadata as any).caption}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Template metadata */}
+          {message.type === "template" && message.metadata && typeof message.metadata === 'object' && message.metadata && (
+            <div className="mt-2">
+              {(message.metadata as any).variables && Object.keys((message.metadata as any).variables).length > 0 && (
+                <div className="text-xs text-gray-500 mt-1">
+                  <span className="font-medium">Variables:</span>
+                  {Object.entries((message.metadata as any).variables).map(([key, value]) => (
+                    <div key={key} className="ml-2">
+                      {key}: {String(value)}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Legacy attachment metadata */}
           {message.metadata && typeof message.metadata === 'object' && message.metadata && 'attachment' in message.metadata && (
             <div className="mt-2 p-2 bg-gray-50 rounded border">
               <div className="text-sm font-medium text-gray-700">

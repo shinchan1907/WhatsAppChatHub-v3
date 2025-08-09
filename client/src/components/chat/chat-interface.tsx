@@ -2,6 +2,7 @@ import { useState, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import ChatList from "./chat-list";
 import MessageBubble from "./message-bubble";
+import TemplateVariableDialog from "@/components/chat/template-variable-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -18,6 +19,8 @@ export default function ChatInterface({ selectedConversationId, onConversationSe
   const [messageText, setMessageText] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [showTemplateSelector, setShowTemplateSelector] = useState(false);
+  const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
+  const [showVariableDialog, setShowVariableDialog] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
@@ -76,23 +79,108 @@ export default function ChatInterface({ selectedConversationId, onConversationSe
     fileInputRef.current?.click();
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
+    if (!file || !selectedConversationId) return;
+
+    // Check file type and size
+    const maxSize = 100 * 1024 * 1024; // 100MB limit
+    if (file.size > maxSize) {
       toast({
-        title: "File selected",
-        description: `${file.name} - File upload feature coming soon!`,
-        variant: "default"
+        title: "File too large",
+        description: "Please select a file smaller than 100MB.",
+        variant: "destructive"
       });
+      return;
+    }
+
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'video/mp4', 'video/mov', 'application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+    if (!allowedTypes.includes(file.type)) {
+      toast({
+        title: "Unsupported file type",
+        description: "Please select an image, video, or document file.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setIsSending(true);
+    try {
+      // Convert file to base64
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = reader.result as string;
+          resolve(result.split(',')[1]); // Remove data:mime;base64, prefix
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+      // Determine media type
+      let mediaType = 'document';
+      if (file.type.startsWith('image/')) {
+        mediaType = 'image';
+      } else if (file.type.startsWith('video/')) {
+        mediaType = 'video';
+      }
+
+      // Send media message
+      await apiRequest("POST", "/api/messages/media", {
+        conversationId: selectedConversationId,
+        contactId: selectedConversation?.contactId,
+        mediaType: file.type,
+        mediaData: base64,
+        filename: file.name,
+        caption: "",
+      });
+
+      toast({
+        title: "Media sent",
+        description: `${file.name} sent successfully!`,
+      });
+    } catch (error) {
+      toast({
+        title: "Failed to send media",
+        description: "There was an error sending your file. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSending(false);
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
     }
   };
 
   const handleSendTemplate = async (templateId: string) => {
     if (!selectedConversationId || isSending) return;
 
+    const template = templates.find(t => t.id === templateId);
+    if (!template) {
+      toast({
+        title: "Template not found",
+        description: "Please select a valid template.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Check if template has variables
+    const templateVariables = template.variables && Array.isArray(template.variables) ? template.variables as string[] : [];
+    
+    if (templateVariables.length > 0) {
+      // Show variable input dialog
+      setSelectedTemplate(template);
+      setShowVariableDialog(true);
+      setShowTemplateSelector(false);
+      return;
+    }
+
+    // Send template without variables
     setIsSending(true);
     try {
-      // Send template message via dedicated API endpoint
       await apiRequest("POST", "/api/messages/template", {
         conversationId: selectedConversationId,
         contactId: selectedConversation?.contactId,
@@ -100,6 +188,31 @@ export default function ChatInterface({ selectedConversationId, onConversationSe
       });
 
       setShowTemplateSelector(false);
+    } catch (error) {
+      toast({
+        title: "Failed to send template",
+        description: "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  const handleSendTemplateWithVariables = async (variables: Record<string, string>) => {
+    if (!selectedConversationId || !selectedTemplate || isSending) return;
+
+    setIsSending(true);
+    try {
+      await apiRequest("POST", "/api/messages/template-with-variables", {
+        conversationId: selectedConversationId,
+        contactId: selectedConversation?.contactId,
+        templateId: selectedTemplate.id,
+        variables: variables,
+      });
+
+      setShowVariableDialog(false);
+      setSelectedTemplate(null);
     } catch (error) {
       toast({
         title: "Failed to send template",
@@ -292,6 +405,17 @@ export default function ChatInterface({ selectedConversationId, onConversationSe
           </div>
         )}
       </div>
+
+      {/* Template Variable Dialog */}
+      {selectedTemplate && (
+        <TemplateVariableDialog
+          template={selectedTemplate}
+          isOpen={showVariableDialog}
+          onClose={() => setShowVariableDialog(false)}
+          onSend={handleSendTemplateWithVariables}
+          isSending={isSending}
+        />
+      )}
     </div>
   );
 }

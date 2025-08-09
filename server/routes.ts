@@ -236,7 +236,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const result = await whatsappService.sendTemplateMessage(
           contact.phone, 
           template.name,
-          [] // No variables for now - can be enhanced later
+          {} // No variables for now - can be enhanced later
         );
         
         if (result.success) {
@@ -307,7 +307,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               phone: contact?.phone,
               message: messageData.content,
               messageId: message.id,
-            }, config);
+            });
             await storage.updateMessageStatus(message.id, "sent");
           } catch (n8nError) {
             console.error("❌ n8n send error:", n8nError);
@@ -737,8 +737,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
                       group: "customer",
                     });
                     
-                    conversation = await storage.createConversation(contact.id);
-                    console.log("✅ Created conversation:", conversation.id);
+                    const newConversation = await storage.createConversation(contact.id);
+                    conversation = { ...newConversation, contact };
+                    console.log("✅ Created conversation:", newConversation.id);
                   }
                   
                   if (conversation) {
@@ -903,6 +904,161 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await storage.updateBroadcast(broadcast.id, { status: "failed" });
     }
   }
+
+  // Media upload endpoint for chat
+  app.post("/api/messages/media", requireAuth, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { conversationId, contactId, mediaType, mediaData, caption, filename } = req.body;
+      
+      if (!mediaData || !mediaType || !conversationId || !contactId) {
+        return res.status(400).json({ message: "Missing required fields" });
+      }
+
+      // Get config for WhatsApp API
+      const config = await storage.getAppConfig(req.session.userId!);
+      if (!config) {
+        return res.status(400).json({ message: "WhatsApp configuration not found" });
+      }
+
+      // Get contact phone number
+      const contact = await storage.getContact(contactId);
+      if (!contact) {
+        return res.status(404).json({ message: "Contact not found" });
+      }
+
+      const whatsappService = new WhatsAppAPIService(config);
+      
+      // Convert base64 to buffer
+      const buffer = Buffer.from(mediaData, 'base64');
+      
+      // Upload media to WhatsApp
+      const uploadResult = await whatsappService.uploadMedia(buffer, mediaType, filename);
+      
+      if (!uploadResult.success || !uploadResult.mediaId) {
+        return res.status(400).json({ message: uploadResult.error || "Failed to upload media" });
+      }
+
+      // Send media message
+      const sendResult = await whatsappService.sendMediaMessage(
+        contact.phone,
+        mediaType as 'image' | 'video' | 'document',
+        uploadResult.mediaId,
+        caption,
+        filename
+      );
+
+      if (!sendResult.success) {
+        return res.status(400).json({ message: sendResult.error || "Failed to send media message" });
+      }
+
+      // Store message in database
+      const message = await storage.createMessage({
+        conversationId,
+        contactId,
+        content: caption || `${mediaType} message`,
+        type: "media",
+        direction: "outbound",
+        status: "sent",
+        templateId: null,
+        metadata: {
+          mediaType,
+          mediaId: uploadResult.mediaId,
+          filename,
+          caption
+        },
+      });
+
+      // Broadcast to all connected WebSocket clients
+      wsConnections.forEach((ws) => {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({
+            type: "new_message",
+            message,
+          }));
+        }
+      });
+
+      res.json(message);
+    } catch (error) {
+      console.error("Error sending media message:", error);
+      res.status(500).json({ message: "Failed to send media message" });
+    }
+  });
+
+  // Template with variables endpoint
+  app.post("/api/messages/template-with-variables", requireAuth, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { conversationId, contactId, templateId, variables } = req.body;
+      
+      if (!conversationId || !contactId || !templateId) {
+        return res.status(400).json({ message: "Missing required fields" });
+      }
+
+      // Get template details
+      const template = await storage.getTemplate(templateId);
+      if (!template) {
+        return res.status(404).json({ message: "Template not found" });
+      }
+
+      // Get contact details
+      const contact = await storage.getContact(contactId);
+      if (!contact) {
+        return res.status(404).json({ message: "Contact not found" });
+      }
+
+      // Get config for WhatsApp API
+      const config = await storage.getAppConfig(req.session.userId!);
+      if (!config) {
+        return res.status(400).json({ message: "WhatsApp configuration not found" });
+      }
+
+      const whatsappService = new WhatsAppAPIService(config);
+      
+      // Send template message with variables
+      const result = await whatsappService.sendTemplateMessage(
+        contact.phone, 
+        template.name,
+        variables || {}
+      );
+
+      if (!result.success) {
+        return res.status(400).json({ message: result.error || "Failed to send template message" });
+      }
+
+      // Create message record with template details and variables
+      const messageData = {
+        conversationId,
+        contactId,
+        content: template.content,
+        type: "template",
+        direction: "outbound" as const,
+        status: "sent" as const,
+        templateId: templateId,
+        metadata: {
+          templateName: template.name,
+          templateCategory: template.category,
+          variables: variables
+        },
+      };
+
+      const message = await storage.createMessage(messageData);
+
+      // Broadcast to all connected WebSocket clients
+      wsConnections.forEach((ws) => {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({
+            type: "new_message",
+            message,
+          }));
+        }
+      });
+
+      res.json(message);
+    } catch (error) {
+      console.error("Error sending template message with variables:", error);
+      res.status(500).json({ message: "Failed to send template message" });
+    }
+  });
 
   const httpServer = createServer(app);
 

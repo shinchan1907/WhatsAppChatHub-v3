@@ -3,15 +3,31 @@ import type { AppConfig } from "@shared/schema";
 export interface WhatsAppMessage {
   messaging_product: string;
   to: string;
-  type: "text" | "template";
+  type: "text" | "template" | "image" | "video" | "document";
   text?: { body: string };
   template?: {
     name: string;
     language: { code: string };
     components?: Array<{
       type: string;
-      parameters?: Array<{ type: string; text: string }>;
+      parameters?: Array<{ type: string; text?: string; image?: { link: string }; video?: { link: string }; document?: { link: string; filename: string } }>;
     }>;
+  };
+  image?: { 
+    link?: string;
+    id?: string;
+    caption?: string;
+  };
+  video?: { 
+    link?: string;
+    id?: string;
+    caption?: string;
+  };
+  document?: { 
+    link?: string;
+    id?: string;
+    caption?: string;
+    filename?: string;
   };
 }
 
@@ -33,6 +49,25 @@ export interface WhatsAppWebhookEntry {
         id: string;
         timestamp: string;
         text?: { body: string };
+        image?: { 
+          mime_type: string;
+          sha256: string;
+          id: string;
+          caption?: string;
+        };
+        video?: { 
+          mime_type: string;
+          sha256: string;
+          id: string;
+          caption?: string;
+        };
+        document?: { 
+          mime_type: string;
+          sha256: string;
+          id: string;
+          filename: string;
+          caption?: string;
+        };
         type: string;
       }>;
       statuses?: Array<{
@@ -332,5 +367,84 @@ export class WhatsAppAPIService {
       console.error("❌ Template sync failed:", error);
       return { success: false, error: error instanceof Error ? error.message : "Unknown error" };
     }
+  }
+
+  async uploadMedia(file: Buffer, mimeType: string, filename?: string): Promise<{ success: boolean; mediaId?: string; error?: string }> {
+    if (!this.config.whatsappAccessToken || !this.config.whatsappPhoneNumberId) {
+      return { success: false, error: "WhatsApp credentials not configured" };
+    }
+
+    try {
+      const formData = new FormData();
+      const blob = new Blob([file], { type: mimeType });
+      formData.append('file', blob, filename || 'media');
+      formData.append('type', mimeType);
+      formData.append('messaging_product', 'whatsapp');
+
+      const response = await fetch(`${this.baseUrl}/${this.config.whatsappPhoneNumberId}/media`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${this.config.whatsappAccessToken}`,
+        },
+        body: formData,
+      });
+
+      const result = await response.json();
+      console.log("📤 Media upload response:", JSON.stringify(result, null, 2));
+
+      if (response.ok && result.id) {
+        return { success: true, mediaId: result.id };
+      } else {
+        return { success: false, error: result.error?.message || "Media upload failed" };
+      }
+    } catch (error) {
+      console.error("❌ Media upload failed:", error);
+      return { success: false, error: error instanceof Error ? error.message : "Unknown error" };
+    }
+  }
+
+  async downloadMedia(mediaId: string): Promise<{ success: boolean; mediaUrl?: string; error?: string }> {
+    if (!this.config.whatsappAccessToken) {
+      return { success: false, error: "WhatsApp credentials not configured" };
+    }
+
+    try {
+      // First get media URL
+      const response = await fetch(`${this.baseUrl}/${mediaId}`, {
+        headers: {
+          "Authorization": `Bearer ${this.config.whatsappAccessToken}`,
+        },
+      });
+
+      const result = await response.json();
+      console.log("📥 Media info response:", JSON.stringify(result, null, 2));
+
+      if (response.ok && result.url) {
+        return { success: true, mediaUrl: result.url };
+      } else {
+        return { success: false, error: result.error?.message || "Media download failed" };
+      }
+    } catch (error) {
+      console.error("❌ Media download failed:", error);
+      return { success: false, error: error instanceof Error ? error.message : "Unknown error" };
+    }
+  }
+
+  async sendMediaMessage(to: string, mediaType: 'image' | 'video' | 'document', mediaId: string, caption?: string, filename?: string): Promise<{ success: boolean; messageId?: string; error?: string }> {
+    const message: WhatsAppMessage = {
+      messaging_product: 'whatsapp',
+      to,
+      type: mediaType,
+    };
+
+    if (mediaType === 'image') {
+      message.image = { id: mediaId, caption };
+    } else if (mediaType === 'video') {
+      message.video = { id: mediaId, caption };
+    } else if (mediaType === 'document') {
+      message.document = { id: mediaId, caption, filename };
+    }
+
+    return this.sendMessage(message);
   }
 }

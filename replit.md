@@ -18,6 +18,7 @@ The frontend is built using React with TypeScript and follows a component-based 
 - **Styling**: Tailwind CSS with custom CSS variables for theming, including WhatsApp-specific color schemes
 - **Routing**: Uses Wouter for lightweight client-side routing
 - **Real-time Communication**: WebSocket integration for live message updates and status changes
+- **Configuration Management**: Comprehensive SaaS-like settings interface for WhatsApp Business API and n8n integration
 
 ### Backend Architecture
 The backend follows a REST API pattern with WebSocket support:
@@ -31,7 +32,9 @@ The backend follows a REST API pattern with WebSocket support:
 ### Database Architecture
 Uses PostgreSQL with Drizzle ORM for type-safe database operations:
 
-- **Schema Design**: Normalized relational structure with tables for users, contacts, conversations, messages, templates, and broadcasts
+- **Schema Design**: Normalized relational structure with tables for users, contacts, conversations, messages, templates, broadcasts, app configuration, and webhook logs
+- **Configuration Storage**: Dedicated tables for storing WhatsApp Business API credentials and system settings per user
+- **Webhook Logging**: Comprehensive logging system for debugging webhook events and API calls
 - **ORM**: Drizzle provides compile-time type safety and migration management
 - **Connection Management**: Neon serverless PostgreSQL with connection pooling
 

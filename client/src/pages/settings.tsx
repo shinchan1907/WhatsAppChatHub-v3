@@ -1,37 +1,49 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 
 interface ConfigData {
-  n8nWebhookUrl: string;
-  n8nApiKey: string;
-  whatsappBusinessApiUrl: string;
   whatsappAccessToken: string;
   whatsappPhoneNumberId: string;
   whatsappBusinessAccountId: string;
+  whatsappWebhookVerifyToken: string;
+  n8nWebhookUrl: string;
+  n8nApiKey: string;
+  n8nEnabled: boolean;
   enableLogging: boolean;
-  webhookVerifyToken: string;
+  webhookSecret: string;
+  isConfigured: boolean;
 }
 
 export default function Settings() {
   const [configData, setConfigData] = useState<ConfigData>({
-    n8nWebhookUrl: "",
-    n8nApiKey: "",
-    whatsappBusinessApiUrl: "https://graph.facebook.com/v18.0",
     whatsappAccessToken: "",
     whatsappPhoneNumberId: "",
     whatsappBusinessAccountId: "",
+    whatsappWebhookVerifyToken: "",
+    n8nWebhookUrl: "",
+    n8nApiKey: "",
+    n8nEnabled: false,
     enableLogging: true,
-    webhookVerifyToken: "",
+    webhookSecret: "",
+    isConfigured: false,
   });
+
+  const [connectionStatus, setConnectionStatus] = useState<{
+    whatsapp: "unknown" | "testing" | "success" | "failed";
+    n8n: "unknown" | "testing" | "success" | "failed";
+  }>({ whatsapp: "unknown", n8n: "unknown" });
+
+  const [showTokens, setShowTokens] = useState(false);
 
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -39,6 +51,13 @@ export default function Settings() {
   const { data: currentConfig, isLoading } = useQuery<ConfigData>({
     queryKey: ["/api/settings/config"],
   });
+
+  // Update form data when config loads
+  useEffect(() => {
+    if (currentConfig) {
+      setConfigData(currentConfig);
+    }
+  }, [currentConfig]);
 
   const configMutation = useMutation({
     mutationFn: async (data: ConfigData) => {
@@ -63,29 +82,26 @@ export default function Settings() {
 
   const testConnectionMutation = useMutation({
     mutationFn: async (type: "n8n" | "whatsapp") => {
+      setConnectionStatus(prev => ({ ...prev, [type]: "testing" }));
       const response = await apiRequest("POST", `/api/settings/test-connection`, { type });
-      return response.json();
+      return { type, result: await response.json() };
     },
-    onSuccess: (data) => {
+    onSuccess: ({ type, result }) => {
+      setConnectionStatus(prev => ({ ...prev, [type]: "success" }));
       toast({
         title: "Connection successful",
-        description: data.message || "Connection test passed.",
+        description: result.message || "Connection test passed.",
       });
     },
-    onError: (error: Error) => {
+    onError: (error: Error, variables) => {
+      const type = (variables as any)?.type || "unknown";
+      setConnectionStatus(prev => ({ ...prev, [type]: "failed" }));
       toast({
         title: "Connection failed",
         description: error.message || "Connection test failed.",
         variant: "destructive",
       });
     },
-  });
-
-  // Initialize form data when config loads
-  useState(() => {
-    if (currentConfig) {
-      setConfigData(currentConfig);
-    }
   });
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -95,6 +111,19 @@ export default function Settings() {
 
   const handleInputChange = (field: keyof ConfigData, value: string | boolean) => {
     setConfigData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case "success":
+        return <Badge variant="default" className="bg-green-500">Connected</Badge>;
+      case "failed":
+        return <Badge variant="destructive">Failed</Badge>;
+      case "testing":
+        return <Badge variant="secondary">Testing...</Badge>;
+      default:
+        return <Badge variant="outline">Unknown</Badge>;
+    }
   };
 
   if (isLoading) {
@@ -109,171 +138,268 @@ export default function Settings() {
   }
 
   return (
-    <div className="p-6 max-w-4xl mx-auto">
+    <div className="p-6 max-w-6xl mx-auto">
       <div className="mb-6">
-        <h2 className="text-2xl font-bold text-gray-800">Settings & Configuration</h2>
-        <p className="text-gray-600 mt-1">Configure your WhatsApp Business API and n8n integration</p>
+        <h1 className="text-3xl font-bold text-gray-900">Settings & Configuration</h1>
+        <p className="text-gray-600 mt-2">Configure your WhatsApp Business integration for production use</p>
+        
+        {configData.isConfigured && (
+          <Alert className="mt-4 border-green-200 bg-green-50">
+            <AlertDescription className="text-green-800">
+              ✓ Your WhatsApp Business API is configured and ready to use. Messages can be sent directly through the application.
+            </AlertDescription>
+          </Alert>
+        )}
       </div>
 
-      <Tabs defaultValue="integration" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="integration">API Integration</TabsTrigger>
-          <TabsTrigger value="whatsapp">WhatsApp Config</TabsTrigger>
-          <TabsTrigger value="advanced">Advanced</TabsTrigger>
+      <Tabs defaultValue="whatsapp" className="space-y-6">
+        <TabsList className="grid w-full grid-cols-4">
+          <TabsTrigger value="whatsapp">WhatsApp Business</TabsTrigger>
+          <TabsTrigger value="n8n">n8n Integration</TabsTrigger>
+          <TabsTrigger value="webhooks">Webhooks</TabsTrigger>
+          <TabsTrigger value="system">System</TabsTrigger>
         </TabsList>
 
         <form onSubmit={handleSubmit}>
-          <TabsContent value="integration" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>n8n Integration</CardTitle>
-                <CardDescription>
-                  Configure your n8n instance for automation workflows
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <Label htmlFor="n8nWebhookUrl">n8n Webhook URL</Label>
-                  <Input
-                    id="n8nWebhookUrl"
-                    type="url"
-                    value={configData.n8nWebhookUrl}
-                    onChange={(e) => handleInputChange("n8nWebhookUrl", e.target.value)}
-                    placeholder="https://your-n8n-instance.com/webhook"
-                    data-testid="input-n8n-webhook-url"
-                  />
-                  <p className="text-sm text-gray-500 mt-1">
-                    Your n8n webhook endpoint URL (e.g., AWS Lightsail instance)
-                  </p>
-                </div>
-
-                <div>
-                  <Label htmlFor="n8nApiKey">n8n API Key (Optional)</Label>
-                  <Input
-                    id="n8nApiKey"
-                    type="password"
-                    value={configData.n8nApiKey}
-                    onChange={(e) => handleInputChange("n8nApiKey", e.target.value)}
-                    placeholder="Your n8n API key for authentication"
-                    data-testid="input-n8n-api-key"
-                  />
-                </div>
-
-                <div className="flex justify-end">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => testConnectionMutation.mutate("n8n")}
-                    disabled={testConnectionMutation.isPending || !configData.n8nWebhookUrl}
-                    data-testid="button-test-n8n"
-                  >
-                    {testConnectionMutation.isPending ? "Testing..." : "Test n8n Connection"}
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
           <TabsContent value="whatsapp" className="space-y-6">
             <Card>
-              <CardHeader>
-                <CardTitle>WhatsApp Business Cloud API</CardTitle>
-                <CardDescription>
-                  Configure your WhatsApp Business API credentials
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <Label htmlFor="whatsappBusinessApiUrl">WhatsApp API Base URL</Label>
-                  <Input
-                    id="whatsappBusinessApiUrl"
-                    type="url"
-                    value={configData.whatsappBusinessApiUrl}
-                    onChange={(e) => handleInputChange("whatsappBusinessApiUrl", e.target.value)}
-                    placeholder="https://graph.facebook.com/v18.0"
-                    data-testid="input-whatsapp-api-url"
-                  />
-                </div>
-
-                <div>
-                  <Label htmlFor="whatsappAccessToken">Access Token</Label>
-                  <Input
-                    id="whatsappAccessToken"
-                    type="password"
-                    value={configData.whatsappAccessToken}
-                    onChange={(e) => handleInputChange("whatsappAccessToken", e.target.value)}
-                    placeholder="Your permanent WhatsApp access token"
-                    data-testid="input-whatsapp-token"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
+              <CardHeader className="pb-4">
+                <div className="flex justify-between items-center">
                   <div>
-                    <Label htmlFor="whatsappPhoneNumberId">Phone Number ID</Label>
+                    <CardTitle>WhatsApp Business Cloud API</CardTitle>
+                    <CardDescription>
+                      Configure your WhatsApp Business Account to send messages directly
+                    </CardDescription>
+                  </div>
+                  {getStatusBadge(connectionStatus.whatsapp)}
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="bg-blue-50 p-4 rounded-lg">
+                  <h4 className="font-medium text-blue-900 mb-2">Quick Setup Guide:</h4>
+                  <ol className="text-sm text-blue-800 space-y-1 list-decimal list-inside">
+                    <li>Create a Facebook App with WhatsApp Business product</li>
+                    <li>Get your Access Token from the Facebook App dashboard</li>
+                    <li>Find your Phone Number ID in WhatsApp Business Account</li>
+                    <li>Configure webhook verification token</li>
+                    <li>Test the connection below</li>
+                  </ol>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <Label htmlFor="whatsappAccessToken">Access Token *</Label>
+                    <div className="flex space-x-2">
+                      <Input
+                        id="whatsappAccessToken"
+                        type={showTokens ? "text" : "password"}
+                        value={configData.whatsappAccessToken || ""}
+                        onChange={(e) => handleInputChange("whatsappAccessToken", e.target.value)}
+                        placeholder="EAAxxxxxxxx..."
+                        data-testid="input-access-token"
+                        className="flex-1"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        onClick={() => setShowTokens(!showTokens)}
+                        data-testid="button-toggle-tokens"
+                      >
+                        <i className={`fas ${showTokens ? "fa-eye-slash" : "fa-eye"}`} />
+                      </Button>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">From your Facebook App dashboard</p>
+                  </div>
+
+                  <div>
+                    <Label htmlFor="whatsappPhoneNumberId">Phone Number ID *</Label>
                     <Input
                       id="whatsappPhoneNumberId"
-                      value={configData.whatsappPhoneNumberId}
+                      value={configData.whatsappPhoneNumberId || ""}
                       onChange={(e) => handleInputChange("whatsappPhoneNumberId", e.target.value)}
-                      placeholder="1234567890123456"
+                      placeholder="123456789012345"
                       data-testid="input-phone-number-id"
                     />
+                    <p className="text-xs text-gray-500 mt-1">From WhatsApp Business Account</p>
                   </div>
+
                   <div>
                     <Label htmlFor="whatsappBusinessAccountId">Business Account ID</Label>
                     <Input
                       id="whatsappBusinessAccountId"
-                      value={configData.whatsappBusinessAccountId}
+                      value={configData.whatsappBusinessAccountId || ""}
                       onChange={(e) => handleInputChange("whatsappBusinessAccountId", e.target.value)}
-                      placeholder="1234567890123456"
+                      placeholder="123456789012345"
                       data-testid="input-business-account-id"
                     />
+                    <p className="text-xs text-gray-500 mt-1">Optional: For account management</p>
+                  </div>
+
+                  <div>
+                    <Label htmlFor="whatsappWebhookVerifyToken">Webhook Verify Token</Label>
+                    <Input
+                      id="whatsappWebhookVerifyToken"
+                      value={configData.whatsappWebhookVerifyToken || ""}
+                      onChange={(e) => handleInputChange("whatsappWebhookVerifyToken", e.target.value)}
+                      placeholder="my_secure_token_123"
+                      data-testid="input-webhook-verify-token"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">Custom token for webhook security</p>
                   </div>
                 </div>
 
-                <div className="flex justify-end">
+                <div className="flex justify-between items-center pt-4 border-t">
+                  <div className="text-sm text-gray-600">
+                    Status: {connectionStatus.whatsapp === "success" ? "✓ Connected" : 
+                            connectionStatus.whatsapp === "failed" ? "✗ Failed" : "Not tested"}
+                  </div>
                   <Button
                     type="button"
                     variant="outline"
                     onClick={() => testConnectionMutation.mutate("whatsapp")}
-                    disabled={testConnectionMutation.isPending || !configData.whatsappAccessToken}
+                    disabled={testConnectionMutation.isPending || !configData.whatsappAccessToken || !configData.whatsappPhoneNumberId}
                     data-testid="button-test-whatsapp"
                   >
-                    {testConnectionMutation.isPending ? "Testing..." : "Test WhatsApp API"}
+                    {testConnectionMutation.isPending ? "Testing..." : "Test Connection"}
                   </Button>
                 </div>
               </CardContent>
             </Card>
           </TabsContent>
 
-          <TabsContent value="advanced" className="space-y-6">
+          <TabsContent value="n8n" className="space-y-6">
+            <Card>
+              <CardHeader className="pb-4">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <CardTitle>n8n Integration (Optional)</CardTitle>
+                    <CardDescription>
+                      Connect with n8n for advanced automation workflows
+                    </CardDescription>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Switch
+                      checked={configData.n8nEnabled}
+                      onCheckedChange={(checked) => handleInputChange("n8nEnabled", checked)}
+                      data-testid="switch-n8n-enabled"
+                    />
+                    {getStatusBadge(connectionStatus.n8n)}
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="bg-purple-50 p-4 rounded-lg">
+                  <h4 className="font-medium text-purple-900 mb-2">n8n Features:</h4>
+                  <ul className="text-sm text-purple-800 space-y-1 list-disc list-inside">
+                    <li>Advanced workflow automation</li>
+                    <li>Multi-step marketing campaigns</li>
+                    <li>External system integrations</li>
+                    <li>Conditional message routing</li>
+                  </ul>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <Label htmlFor="n8nWebhookUrl">n8n Webhook URL</Label>
+                    <Input
+                      id="n8nWebhookUrl"
+                      value={configData.n8nWebhookUrl || ""}
+                      onChange={(e) => handleInputChange("n8nWebhookUrl", e.target.value)}
+                      placeholder="https://your-n8n-instance.com/webhook/whatsapp"
+                      data-testid="input-n8n-webhook-url"
+                      disabled={!configData.n8nEnabled}
+                    />
+                    <p className="text-xs text-gray-500 mt-1">Your n8n webhook endpoint URL</p>
+                  </div>
+
+                  <div>
+                    <Label htmlFor="n8nApiKey">n8n API Key (Optional)</Label>
+                    <Input
+                      id="n8nApiKey"
+                      type={showTokens ? "text" : "password"}
+                      value={configData.n8nApiKey || ""}
+                      onChange={(e) => handleInputChange("n8nApiKey", e.target.value)}
+                      placeholder="n8n_api_key_xxx"
+                      data-testid="input-n8n-api-key"
+                      disabled={!configData.n8nEnabled}
+                    />
+                    <p className="text-xs text-gray-500 mt-1">For advanced n8n API operations</p>
+                  </div>
+                </div>
+
+                <div className="flex justify-between items-center pt-4 border-t">
+                  <div className="text-sm text-gray-600">
+                    Status: {connectionStatus.n8n === "success" ? "✓ Connected" : 
+                            connectionStatus.n8n === "failed" ? "✗ Failed" : "Not tested"}
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => testConnectionMutation.mutate("n8n")}
+                    disabled={testConnectionMutation.isPending || !configData.n8nEnabled || !configData.n8nWebhookUrl}
+                    data-testid="button-test-n8n"
+                  >
+                    {testConnectionMutation.isPending ? "Testing..." : "Test Connection"}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="webhooks" className="space-y-6">
             <Card>
               <CardHeader>
-                <CardTitle>Advanced Settings</CardTitle>
+                <CardTitle>Webhook Configuration</CardTitle>
                 <CardDescription>
-                  Additional configuration options
+                  Webhook endpoints for receiving WhatsApp messages and status updates
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div>
-                  <Label htmlFor="webhookVerifyToken">Webhook Verify Token</Label>
-                  <Input
-                    id="webhookVerifyToken"
-                    value={configData.webhookVerifyToken}
-                    onChange={(e) => handleInputChange("webhookVerifyToken", e.target.value)}
-                    placeholder="Your webhook verification token"
-                    data-testid="input-verify-token"
-                  />
-                  <p className="text-sm text-gray-500 mt-1">
-                    Used to verify incoming WhatsApp webhook requests
-                  </p>
+                <div className="bg-gray-50 p-4 rounded-lg">
+                  <h4 className="font-medium text-gray-900 mb-2">Your Webhook URLs:</h4>
+                  <div className="space-y-2 text-sm font-mono">
+                    <div>
+                      <span className="text-gray-600">Messages:</span>
+                      <div className="bg-white p-2 rounded border">
+                        {typeof window !== 'undefined' ? window.location.origin : ''}/api/webhooks/whatsapp
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-gray-600">Status Updates:</span>
+                      <div className="bg-white p-2 rounded border">
+                        {typeof window !== 'undefined' ? window.location.origin : ''}/api/webhooks/message-status
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
+                <div>
+                  <Label>Webhook Secret</Label>
+                  <Input
+                    value={configData.webhookSecret ? (showTokens ? configData.webhookSecret : "•".repeat(20)) : ""}
+                    readOnly
+                    className="bg-gray-50"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Auto-generated secure token</p>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="system" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>System Configuration</CardTitle>
+                <CardDescription>
+                  General system settings and preferences
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <Label htmlFor="enableLogging">Enable Debug Logging</Label>
-                    <p className="text-sm text-gray-500 mt-1">
-                      Log API requests and responses for debugging
-                    </p>
+                    <Label htmlFor="enableLogging">Enable Logging</Label>
+                    <p className="text-sm text-gray-500">Log webhook events and API calls for debugging</p>
                   </div>
                   <Switch
                     id="enableLogging"
@@ -282,32 +408,34 @@ export default function Settings() {
                     data-testid="switch-enable-logging"
                   />
                 </div>
+
+                <div className="border-t pt-4">
+                  <h4 className="font-medium mb-2">System Status</h4>
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div className="flex justify-between">
+                      <span>WhatsApp API:</span>
+                      <span className={configData.isConfigured ? "text-green-600" : "text-red-600"}>
+                        {configData.isConfigured ? "Configured" : "Not Configured"}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>n8n Integration:</span>
+                      <span className={configData.n8nEnabled ? "text-blue-600" : "text-gray-500"}>
+                        {configData.n8nEnabled ? "Enabled" : "Disabled"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
               </CardContent>
             </Card>
           </TabsContent>
 
-          <div className="flex justify-end space-x-2 pt-6">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setConfigData(currentConfig || {
-                n8nWebhookUrl: "",
-                n8nApiKey: "",
-                whatsappBusinessApiUrl: "https://graph.facebook.com/v18.0",
-                whatsappAccessToken: "",
-                whatsappPhoneNumberId: "",
-                whatsappBusinessAccountId: "",
-                enableLogging: true,
-                webhookVerifyToken: "",
-              })}
-            >
-              Reset
-            </Button>
+          <div className="flex justify-end space-x-4 pt-6">
             <Button
               type="submit"
-              className="whatsapp-green"
               disabled={configMutation.isPending}
               data-testid="button-save-config"
+              className="px-8"
             >
               {configMutation.isPending ? "Saving..." : "Save Configuration"}
             </Button>

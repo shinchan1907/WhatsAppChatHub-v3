@@ -57,6 +57,7 @@ export const broadcasts = pgTable("broadcasts", {
   templateId: varchar("template_id").references(() => templates.id).notNull(),
   recipients: jsonb("recipients").notNull(), // Array of contact IDs
   variables: jsonb("variables"), // Template variable values
+  csvData: jsonb("csv_data"), // CSV upload data for bulk messaging
   status: text("status").default("pending"), // pending, sending, completed, failed
   sentCount: integer("sent_count").default(0),
   deliveredCount: integer("delivered_count").default(0),
@@ -64,6 +65,35 @@ export const broadcasts = pgTable("broadcasts", {
   scheduledFor: timestamp("scheduled_for"),
   sentAt: timestamp("sent_at"),
   createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const appConfig = pgTable("app_config", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  // WhatsApp Business API Configuration
+  whatsappAccessToken: text("whatsapp_access_token"),
+  whatsappPhoneNumberId: text("whatsapp_phone_number_id"),
+  whatsappBusinessAccountId: text("whatsapp_business_account_id"),
+  whatsappWebhookVerifyToken: text("whatsapp_webhook_verify_token"),
+  // n8n Integration (Optional)
+  n8nWebhookUrl: text("n8n_webhook_url"),
+  n8nApiKey: text("n8n_api_key"),
+  n8nEnabled: boolean("n8n_enabled").default(false),
+  // System Configuration
+  enableLogging: boolean("enable_logging").default(true),
+  webhookSecret: text("webhook_secret"),
+  isConfigured: boolean("is_configured").default(false),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const webhookLogs = pgTable("webhook_logs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  source: text("source").notNull(), // whatsapp, n8n
+  payload: jsonb("payload").notNull(),
+  status: text("status").default("received"), // received, processed, failed
+  errorMessage: text("error_message"),
+  timestamp: timestamp("timestamp").defaultNow(),
 });
 
 // Insert schemas
@@ -93,6 +123,17 @@ export const insertBroadcastSchema = createInsertSchema(broadcasts).omit({
   sentAt: true,
 });
 
+export const insertAppConfigSchema = createInsertSchema(appConfig).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertWebhookLogSchema = createInsertSchema(webhookLogs).omit({
+  id: true,
+  timestamp: true,
+});
+
 // Types
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -111,3 +152,9 @@ export type InsertTemplate = z.infer<typeof insertTemplateSchema>;
 
 export type Broadcast = typeof broadcasts.$inferSelect;
 export type InsertBroadcast = z.infer<typeof insertBroadcastSchema>;
+
+export type AppConfig = typeof appConfig.$inferSelect;
+export type InsertAppConfig = z.infer<typeof insertAppConfigSchema>;
+
+export type WebhookLog = typeof webhookLogs.$inferSelect;
+export type InsertWebhookLog = z.infer<typeof insertWebhookLogSchema>;

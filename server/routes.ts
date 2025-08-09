@@ -4,6 +4,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import bcrypt from "bcrypt";
 import session from "express-session";
 import { storage } from "./storage";
+import { WhatsAppAPIService } from "./whatsapp-api";
 import { insertContactSchema, insertMessageSchema, insertTemplateSchema, insertBroadcastSchema } from "@shared/schema";
 
 interface AuthenticatedRequest extends Request {
@@ -188,23 +189,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Message routes
-  app.post("/api/messages", requireAuth, async (req, res) => {
+  app.post("/api/messages", requireAuth, async (req: any, res) => {
     try {
       const messageData = insertMessageSchema.parse(req.body);
+      const userId = req.session.userId;
       const message = await storage.createMessage(messageData);
       
-      // Send to n8n for WhatsApp delivery
+      // Send via WhatsApp API for outbound messages
       if (messageData.direction === "outbound") {
-        try {
-          await sendToN8n("send-message", {
-            phone: (await storage.getContact(messageData.contactId))?.phone,
-            message: messageData.content,
-            messageId: message.id,
-          });
-        } catch (n8nError) {
-          console.error("n8n send error:", n8nError);
-          // Update message status to failed
+        const config = await storage.getAppConfig(userId);
+        
+        if (config && config.isConfigured) {
+          // Use direct WhatsApp API
+          const whatsappService = new WhatsAppAPIService(config);
+          const contact = await storage.getContact(messageData.contactId);
+          
+          if (contact?.phone) {
+            const result = await whatsappService.sendTextMessage(contact.phone, messageData.content);
+            
+            if (result.success) {
+              await storage.updateMessageStatus(message.id, "delivered");
+            } else {
+              await storage.updateMessageStatus(message.id, "failed");
+              console.error("WhatsApp API send error:", result.error);
+            }
+          }
+        } else if (config?.n8nEnabled && config?.n8nWebhookUrl) {
+          // Fallback to n8n if configured
+          try {
+            const contact = await storage.getContact(messageData.contactId);
+            await sendToN8n("send-message", {
+              phone: contact?.phone,
+              message: messageData.content,
+              messageId: message.id,
+            });
+          } catch (n8nError) {
+            console.error("n8n send error:", n8nError);
+            await storage.updateMessageStatus(message.id, "failed");
+          }
+        } else {
+          // No delivery method configured
           await storage.updateMessageStatus(message.id, "failed");
+          console.error("No delivery method configured");
         }
       }
       
@@ -383,15 +409,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Configuration routes
-  app.get("/api/settings/config", requireAuth, async (req, res) => {
+  app.get("/api/settings/config", requireAuth, async (req: any, res) => {
     try {
-      const config = {
-        n8nWebhookUrl: process.env.N8N_WEBHOOK_URL || "",
-        whatsappBusinessApiUrl: "https://graph.facebook.com/v18.0",
-        whatsappPhoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID || "",
-        whatsappBusinessAccountId: process.env.WHATSAPP_BUSINESS_ACCOUNT_ID || "",
-        enableLogging: process.env.ENABLE_LOGGING === "true",
-        webhookVerifyToken: process.env.WEBHOOK_VERIFY_TOKEN || "",
+      const userId = req.session.userId;
+      const config = await storage.getAppConfig(userId) || {
+        whatsappAccessToken: "",
+        whatsappPhoneNumberId: "",
+        whatsappBusinessAccountId: "",
+        whatsappWebhookVerifyToken: "",
+        n8nWebhookUrl: "",
+        n8nApiKey: "",
+        n8nEnabled: false,
+        enableLogging: true,
+        webhookSecret: "",
+        isConfigured: false,
       };
       res.json(config);
     } catch (error) {
@@ -400,30 +431,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/settings/config", requireAuth, async (req, res) => {
+  app.post("/api/settings/config", requireAuth, async (req: any, res) => {
     try {
-      res.json({ message: "Configuration saved successfully" });
+      const userId = req.session.userId;
+      const config = await storage.updateAppConfig(userId, req.body);
+      res.json({ message: "Configuration saved successfully", config });
     } catch (error) {
       console.error("Error saving config:", error);
       res.status(500).json({ message: "Failed to save configuration" });
     }
   });
 
-  app.post("/api/settings/test-connection", requireAuth, async (req, res) => {
+  app.post("/api/settings/test-connection", requireAuth, async (req: any, res) => {
     try {
       const { type } = req.body;
+      const userId = req.session.userId;
+      const config = await storage.getAppConfig(userId);
       
       if (type === "n8n") {
-        const n8nUrl = process.env.N8N_WEBHOOK_URL;
-        if (!n8nUrl) {
+        if (!config?.n8nWebhookUrl) {
           return res.status(400).json({ message: "n8n webhook URL not configured" });
         }
         
         try {
-          const testResponse = await fetch(`${n8nUrl}/test`, {
+          const testResponse = await fetch(`${config.n8nWebhookUrl}/test`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ test: true }),
+            body: JSON.stringify({ test: true, timestamp: Date.now() }),
           });
           
           if (testResponse.ok) {
@@ -435,24 +469,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
           res.status(400).json({ message: "n8n connection failed: Network error" });
         }
       } else if (type === "whatsapp") {
-        const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
-        const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
-        
-        if (!accessToken || !phoneNumberId) {
+        if (!config?.whatsappAccessToken || !config?.whatsappPhoneNumberId) {
           return res.status(400).json({ message: "WhatsApp credentials not configured" });
         }
         
         try {
-          const whatsappResponse = await fetch(`https://graph.facebook.com/v18.0/${phoneNumberId}`, {
+          const whatsappResponse = await fetch(`https://graph.facebook.com/v18.0/${config.whatsappPhoneNumberId}`, {
             headers: {
-              "Authorization": `Bearer ${accessToken}`,
+              "Authorization": `Bearer ${config.whatsappAccessToken}`,
             },
           });
           
           if (whatsappResponse.ok) {
             res.json({ message: "WhatsApp API connection successful" });
           } else {
-            res.status(400).json({ message: "WhatsApp API connection failed" });
+            const result = await whatsappResponse.json();
+            res.status(400).json({ message: result.error?.message || "WhatsApp API connection failed" });
           }
         } catch (fetchError) {
           res.status(400).json({ message: "WhatsApp API connection failed: Network error" });
@@ -465,6 +497,202 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: "Connection test failed" });
     }
   });
+
+  // WhatsApp Webhook endpoints
+  app.get("/api/webhooks/whatsapp", async (req, res) => {
+    // Webhook verification
+    const mode = req.query['hub.mode'];
+    const token = req.query['hub.verify_token'];
+    const challenge = req.query['hub.challenge'];
+    
+    // For now, accept any verification token - in production, this should validate against stored config
+    if (mode === 'subscribe' && token && challenge) {
+      console.log('Webhook verified');
+      res.status(200).send(challenge);
+    } else {
+      res.status(403).send('Forbidden');
+    }
+  });
+
+  app.post("/api/webhooks/whatsapp", async (req, res) => {
+    try {
+      // Log incoming webhook for debugging
+      await storage.createWebhookLog({
+        source: "whatsapp",
+        payload: req.body,
+        status: "received",
+      });
+
+      // Parse WhatsApp webhook payload
+      if (req.body.entry) {
+        for (const entry of req.body.entry) {
+          for (const change of entry.changes || []) {
+            // Handle incoming messages
+            if (change.value?.messages) {
+              for (const msg of change.value.messages) {
+                // Find or create conversation
+                let conversation = (await storage.getConversations()).find(c => 
+                  c.contact?.phone === msg.from
+                );
+                
+                if (!conversation) {
+                  // Create new contact and conversation
+                  const contact = await storage.createContact({
+                    name: `Contact ${msg.from}`,
+                    phone: msg.from,
+                    group: "customer",
+                  });
+                  
+                  conversation = await storage.createConversation(contact.id);
+                }
+                
+                // Create incoming message
+                const message = await storage.createMessage({
+                  conversationId: conversation.id,
+                  contactId: conversation.contactId,
+                  content: msg.text?.body || "",
+                  direction: "inbound",
+                  status: "delivered",
+                  whatsappMessageId: msg.id,
+                  timestamp: new Date(parseInt(msg.timestamp) * 1000),
+                });
+                
+                // Notify WebSocket clients
+                wsConnections.forEach((ws) => {
+                  if (ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({
+                      type: "new_message",
+                      data: message,
+                    }));
+                  }
+                });
+              }
+            }
+            
+            // Handle message status updates
+            if (change.value?.statuses) {
+              for (const status of change.value.statuses) {
+                // Find message by WhatsApp ID and update status
+                // This would require extending the storage interface
+                console.log("Message status update:", status);
+              }
+            }
+          }
+        }
+      }
+      
+      res.status(200).send('OK');
+    } catch (error) {
+      console.error("Webhook processing error:", error);
+      
+      await storage.createWebhookLog({
+        source: "whatsapp",
+        payload: req.body,
+        status: "failed",
+        errorMessage: error instanceof Error ? error.message : "Unknown error",
+      });
+      
+      res.status(500).send('Error');
+    }
+  });
+
+  // Broadcast endpoints with enhanced functionality
+  app.post("/api/broadcasts", requireAuth, async (req: any, res) => {
+    try {
+      const broadcastData = insertBroadcastSchema.parse(req.body);
+      const userId = req.session.userId;
+      
+      // Get WhatsApp configuration
+      const config = await storage.getAppConfig(userId);
+      if (!config || !config.isConfigured) {
+        return res.status(400).json({ message: "WhatsApp API not configured" });
+      }
+      
+      const broadcast = await storage.createBroadcast(broadcastData);
+      
+      // Process broadcast immediately or schedule it
+      if (!broadcastData.scheduledFor || new Date(broadcastData.scheduledFor) <= new Date()) {
+        processBroadcast(broadcast, config);
+      }
+      
+      res.status(201).json(broadcast);
+    } catch (error) {
+      console.error("Broadcast creation error:", error);
+      res.status(500).json({ message: "Failed to create broadcast" });
+    }
+  });
+
+  // Function to process broadcasts
+  async function processBroadcast(broadcast: any, config: any) {
+    try {
+      const whatsappService = new WhatsAppAPIService(config);
+      const template = await storage.getTemplate(broadcast.templateId);
+      
+      if (!template) {
+        await storage.updateBroadcast(broadcast.id, { status: "failed" });
+        return;
+      }
+      
+      await storage.updateBroadcast(broadcast.id, { status: "sending", sentAt: new Date() });
+      
+      let sentCount = 0;
+      let failedCount = 0;
+      
+      // Process recipients from CSV data or regular recipients
+      const recipients = broadcast.csvData || broadcast.recipients;
+      
+      for (const recipientData of recipients) {
+        try {
+          let phoneNumber, variables;
+          
+          if (typeof recipientData === 'string') {
+            // Regular recipient ID
+            const contact = await storage.getContact(recipientData);
+            phoneNumber = contact?.phone;
+            variables = broadcast.variables || {};
+          } else {
+            // CSV data with phone and variables
+            phoneNumber = recipientData.phone;
+            variables = { ...broadcast.variables, ...recipientData };
+          }
+          
+          if (!phoneNumber) {
+            failedCount++;
+            continue;
+          }
+          
+          const result = await whatsappService.sendTemplateMessage(
+            phoneNumber,
+            template.name,
+            variables
+          );
+          
+          if (result.success) {
+            sentCount++;
+          } else {
+            failedCount++;
+          }
+          
+          // Add delay between messages to avoid rate limiting
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          
+        } catch (error) {
+          failedCount++;
+          console.error("Broadcast send error:", error);
+        }
+      }
+      
+      await storage.updateBroadcast(broadcast.id, {
+        status: "completed",
+        sentCount,
+        failedCount,
+      });
+      
+    } catch (error) {
+      console.error("Broadcast processing error:", error);
+      await storage.updateBroadcast(broadcast.id, { status: "failed" });
+    }
+  }
 
   const httpServer = createServer(app);
 

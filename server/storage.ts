@@ -5,6 +5,8 @@ import {
   messages,
   templates,
   broadcasts,
+  appConfig,
+  webhookLogs,
   type User,
   type InsertUser,
   type Contact,
@@ -17,6 +19,10 @@ import {
   type InsertTemplate,
   type Broadcast,
   type InsertBroadcast,
+  type AppConfig,
+  type InsertAppConfig,
+  type WebhookLog,
+  type InsertWebhookLog,
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 
@@ -56,6 +62,14 @@ export interface IStorage {
   getBroadcast(id: string): Promise<Broadcast | undefined>;
   createBroadcast(broadcast: InsertBroadcast): Promise<Broadcast>;
   updateBroadcast(id: string, updates: Partial<Broadcast>): Promise<void>;
+
+  // Configuration operations
+  getAppConfig(userId: string): Promise<AppConfig | undefined>;
+  updateAppConfig(userId: string, config: Partial<InsertAppConfig>): Promise<AppConfig>;
+
+  // Webhook log operations
+  createWebhookLog(log: InsertWebhookLog): Promise<WebhookLog>;
+  getWebhookLogs(limit?: number): Promise<WebhookLog[]>;
 }
 
 export class MemStorage implements IStorage {
@@ -65,6 +79,8 @@ export class MemStorage implements IStorage {
   private messages: Map<string, Message> = new Map();
   private templates: Map<string, Template> = new Map();
   private broadcasts: Map<string, Broadcast> = new Map();
+  private appConfigs: Map<string, AppConfig> = new Map();
+  private webhookLogs: Map<string, WebhookLog> = new Map();
 
   constructor() {
     // Initialize with sample data
@@ -403,6 +419,56 @@ export class MemStorage implements IStorage {
     
     const updatedBroadcast = { ...broadcast, ...updates };
     this.broadcasts.set(id, updatedBroadcast);
+  }
+
+  // Configuration operations
+  async getAppConfig(userId: string): Promise<AppConfig | undefined> {
+    return this.appConfigs.get(userId);
+  }
+
+  async updateAppConfig(userId: string, config: Partial<InsertAppConfig>): Promise<AppConfig> {
+    const existing = this.appConfigs.get(userId);
+    const now = new Date();
+    
+    const appConfig: AppConfig = {
+      id: existing?.id || randomUUID(),
+      userId,
+      whatsappAccessToken: config.whatsappAccessToken || existing?.whatsappAccessToken || null,
+      whatsappPhoneNumberId: config.whatsappPhoneNumberId || existing?.whatsappPhoneNumberId || null,
+      whatsappBusinessAccountId: config.whatsappBusinessAccountId || existing?.whatsappBusinessAccountId || null,
+      whatsappWebhookVerifyToken: config.whatsappWebhookVerifyToken || existing?.whatsappWebhookVerifyToken || null,
+      n8nWebhookUrl: config.n8nWebhookUrl || existing?.n8nWebhookUrl || null,
+      n8nApiKey: config.n8nApiKey || existing?.n8nApiKey || null,
+      n8nEnabled: config.n8nEnabled ?? existing?.n8nEnabled ?? false,
+      enableLogging: config.enableLogging ?? existing?.enableLogging ?? true,
+      webhookSecret: config.webhookSecret || existing?.webhookSecret || randomUUID(),
+      isConfigured: config.isConfigured ?? (
+        !!config.whatsappAccessToken && !!config.whatsappPhoneNumberId
+      ),
+      createdAt: existing?.createdAt || now,
+      updatedAt: now,
+    };
+    
+    this.appConfigs.set(userId, appConfig);
+    return appConfig;
+  }
+
+  // Webhook log operations
+  async createWebhookLog(log: InsertWebhookLog): Promise<WebhookLog> {
+    const id = randomUUID();
+    const webhookLog: WebhookLog = {
+      ...log,
+      id,
+      timestamp: new Date(),
+    };
+    this.webhookLogs.set(id, webhookLog);
+    return webhookLog;
+  }
+
+  async getWebhookLogs(limit: number = 100): Promise<WebhookLog[]> {
+    return Array.from(this.webhookLogs.values())
+      .sort((a, b) => (b.timestamp?.getTime() || 0) - (a.timestamp?.getTime() || 0))
+      .slice(0, limit);
   }
 }
 

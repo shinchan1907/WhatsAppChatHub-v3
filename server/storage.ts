@@ -423,10 +423,15 @@ export class MemStorage implements IStorage {
 
   // Configuration operations
   async getAppConfig(userId: string): Promise<AppConfig | undefined> {
-    return this.appConfigs.get(userId);
+    console.log("🔍 Getting config for user:", userId);
+    const config = this.appConfigs.get(userId);
+    console.log("📋 Config found:", config ? "yes" : "no", config ? Object.keys(config) : "none");
+    return config;
   }
 
   async updateAppConfig(userId: string, config: Partial<InsertAppConfig>): Promise<AppConfig> {
+    console.log("💾 Updating config for user:", userId);
+    console.log("📝 Config data:", Object.keys(config));
     const existing = this.appConfigs.get(userId);
     const now = new Date();
     
@@ -443,13 +448,17 @@ export class MemStorage implements IStorage {
       enableLogging: config.enableLogging ?? existing?.enableLogging ?? true,
       webhookSecret: config.webhookSecret || existing?.webhookSecret || randomUUID(),
       isConfigured: config.isConfigured ?? (
-        !!config.whatsappAccessToken && !!config.whatsappPhoneNumberId
+        !!(config.whatsappAccessToken || existing?.whatsappAccessToken) && 
+        !!(config.whatsappPhoneNumberId || existing?.whatsappPhoneNumberId)
       ),
       createdAt: existing?.createdAt || now,
       updatedAt: now,
     };
     
     this.appConfigs.set(userId, appConfig);
+    console.log("✅ Config saved with keys:", Object.keys(appConfig));
+    console.log("🔑 Has access token:", !!appConfig.whatsappAccessToken);
+    console.log("📱 Has phone number ID:", !!appConfig.whatsappPhoneNumberId);
     return appConfig;
   }
 

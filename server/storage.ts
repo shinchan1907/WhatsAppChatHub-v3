@@ -432,27 +432,28 @@ export class MemStorage implements IStorage {
   async updateAppConfig(userId: string, config: Partial<InsertAppConfig>): Promise<AppConfig> {
     console.log("💾 Updating config for user:", userId);
     console.log("📝 Config data:", Object.keys(config));
+    console.log("🔍 Access Token being saved:", config.whatsappAccessToken ? "YES (length: " + config.whatsappAccessToken.length + ")" : "NO");
     const existing = this.appConfigs.get(userId);
     const now = new Date();
     
     const appConfig: AppConfig = {
       id: existing?.id || randomUUID(),
       userId,
-      whatsappAccessToken: config.whatsappAccessToken || existing?.whatsappAccessToken || null,
-      whatsappPhoneNumberId: config.whatsappPhoneNumberId || existing?.whatsappPhoneNumberId || null,
-      whatsappBusinessAccountId: config.whatsappBusinessAccountId || existing?.whatsappBusinessAccountId || null,
-      whatsappWebhookVerifyToken: config.whatsappWebhookVerifyToken || existing?.whatsappWebhookVerifyToken || null,
-      n8nWebhookUrl: config.n8nWebhookUrl || existing?.n8nWebhookUrl || null,
-      n8nApiKey: config.n8nApiKey || existing?.n8nApiKey || null,
+      whatsappAccessToken: config.whatsappAccessToken !== undefined ? config.whatsappAccessToken : existing?.whatsappAccessToken || null,
+      whatsappPhoneNumberId: config.whatsappPhoneNumberId !== undefined ? config.whatsappPhoneNumberId : existing?.whatsappPhoneNumberId || null,
+      whatsappBusinessAccountId: config.whatsappBusinessAccountId !== undefined ? config.whatsappBusinessAccountId : existing?.whatsappBusinessAccountId || null,
+      whatsappWebhookVerifyToken: config.whatsappWebhookVerifyToken !== undefined ? config.whatsappWebhookVerifyToken : existing?.whatsappWebhookVerifyToken || null,
+      n8nWebhookUrl: config.n8nWebhookUrl !== undefined ? config.n8nWebhookUrl : existing?.n8nWebhookUrl || null,
+      n8nApiKey: config.n8nApiKey !== undefined ? config.n8nApiKey : existing?.n8nApiKey || null,
       n8nEnabled: config.n8nEnabled ?? existing?.n8nEnabled ?? false,
       usePersistentDb: config.usePersistentDb ?? existing?.usePersistentDb ?? false,
-      dbHost: config.dbHost || existing?.dbHost || null,
-      dbPort: config.dbPort || existing?.dbPort || null,
-      dbName: config.dbName || existing?.dbName || null,
-      dbUsername: config.dbUsername || existing?.dbUsername || null,
-      dbPassword: config.dbPassword || existing?.dbPassword || null,
+      dbHost: config.dbHost !== undefined ? config.dbHost : existing?.dbHost || null,
+      dbPort: config.dbPort !== undefined ? config.dbPort : existing?.dbPort || null,
+      dbName: config.dbName !== undefined ? config.dbName : existing?.dbName || null,
+      dbUsername: config.dbUsername !== undefined ? config.dbUsername : existing?.dbUsername || null,
+      dbPassword: config.dbPassword !== undefined ? config.dbPassword : existing?.dbPassword || null,
       enableLogging: config.enableLogging ?? existing?.enableLogging ?? true,
-      webhookSecret: config.webhookSecret || existing?.webhookSecret || randomUUID(),
+      webhookSecret: config.webhookSecret !== undefined ? config.webhookSecret : existing?.webhookSecret || randomUUID(),
       isConfigured: config.isConfigured ?? (
         !!(config.whatsappAccessToken || existing?.whatsappAccessToken) && 
         !!(config.whatsappPhoneNumberId || existing?.whatsappPhoneNumberId)

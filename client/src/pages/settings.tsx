@@ -241,6 +241,9 @@ export default function Settings() {
                       placeholder="123456789012345"
                       data-testid="input-phone-number-id"
                     />
+                    <p className="text-xs text-blue-600 mt-1">
+                      📋 From webhook logs, your correct Phone Number ID should be: <strong>776001938919357</strong>
+                    </p>
                     <p className="text-xs text-gray-500 mt-1">From WhatsApp Business Account</p>
                   </div>
 

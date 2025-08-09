@@ -698,7 +698,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
             // Test custom CDN by checking if base URL is accessible
             const customResponse = await fetch(cdnConfig.cdnBaseUrl, {
               method: "HEAD",
-              timeout: 10000,
             });
             
             if (customResponse.ok) {

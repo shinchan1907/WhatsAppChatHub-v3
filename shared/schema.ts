@@ -39,6 +39,8 @@ export const messages = pgTable("messages", {
   status: text("status").default("sent"), // sent, delivered, read, failed
   templateId: varchar("template_id"),
   metadata: jsonb("metadata"), // For template variables, media info, etc.
+  isRead: boolean("is_read").default(false), // For unread indicators
+  readAt: timestamp("read_at"), // When message was read by customer
   timestamp: timestamp("timestamp").defaultNow(),
 });
 
@@ -86,6 +88,13 @@ export const appConfig = pgTable("app_config", {
   dbName: text("db_name"),
   dbUsername: text("db_username"),
   dbPassword: text("db_password"),
+  // Media/CDN Configuration
+  cdnType: text("cdn_type").default("none"), // none, bunny, aws, cloudinary
+  bunnyApiKey: text("bunny_api_key"),
+  bunnyStorageZone: text("bunny_storage_zone"),
+  bunnyPullZone: text("bunny_pull_zone"),
+  bunnyRegion: text("bunny_region").default("ny"), // ny, la, sg, etc.
+  cdnBaseUrl: text("cdn_base_url"),
   // System Configuration
   enableLogging: boolean("enable_logging").default(true),
   webhookSecret: text("webhook_secret"),

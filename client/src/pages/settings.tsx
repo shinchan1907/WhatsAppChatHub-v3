@@ -25,6 +25,12 @@ interface ConfigData {
   dbName: string;
   dbUsername: string;
   dbPassword: string;
+  cdnType: string;
+  bunnyApiKey: string;
+  bunnyStorageZone: string;
+  bunnyPullZone: string;
+  bunnyRegion: string;
+  cdnBaseUrl: string;
   enableLogging: boolean;
   webhookSecret: string;
   isConfigured: boolean;
@@ -45,6 +51,12 @@ export default function Settings() {
     dbName: "",
     dbUsername: "",
     dbPassword: "",
+    cdnType: "none",
+    bunnyApiKey: "",
+    bunnyStorageZone: "",
+    bunnyPullZone: "",
+    bunnyRegion: "ny",
+    cdnBaseUrl: "",
     enableLogging: true,
     webhookSecret: "",
     isConfigured: false,
@@ -173,8 +185,9 @@ export default function Settings() {
       </div>
 
       <Tabs defaultValue="whatsapp" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="whatsapp">WhatsApp Business</TabsTrigger>
+          <TabsTrigger value="media">Media Server</TabsTrigger>
           <TabsTrigger value="n8n">n8n Integration</TabsTrigger>
           <TabsTrigger value="webhooks">Webhooks</TabsTrigger>
           <TabsTrigger value="system">System</TabsTrigger>
@@ -289,6 +302,132 @@ export default function Settings() {
                   >
                     {testConnectionMutation.isPending ? "Testing..." : "Test Connection"}
                   </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="media" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Media Server & CDN Configuration</CardTitle>
+                <CardDescription>
+                  Configure your CDN or media server for WhatsApp media files (images, videos, documents)
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="bg-orange-50 p-4 rounded-lg">
+                  <h4 className="font-medium text-orange-900 mb-2">Supported CDN Providers:</h4>
+                  <ul className="text-sm text-orange-800 space-y-1 list-disc list-inside">
+                    <li>Bunny CDN - High performance global CDN</li>
+                    <li>AWS S3 + CloudFront - Enterprise solution</li>
+                    <li>Cloudinary - Image and video optimization</li>
+                    <li>Custom CDN - Your own media server</li>
+                  </ul>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <Label htmlFor="cdnType">CDN Provider</Label>
+                    <select
+                      id="cdnType"
+                      value={configData.cdnType || "none"}
+                      onChange={(e) => handleInputChange("cdnType", e.target.value)}
+                      className="w-full p-2 border border-gray-300 rounded-md"
+                      data-testid="select-cdn-type"
+                    >
+                      <option value="none">No CDN (Basic media handling)</option>
+                      <option value="bunny">Bunny CDN</option>
+                      <option value="aws">AWS S3 + CloudFront</option>
+                      <option value="cloudinary">Cloudinary</option>
+                      <option value="custom">Custom CDN</option>
+                    </select>
+                    <p className="text-xs text-gray-500 mt-1">Choose your preferred media hosting provider</p>
+                  </div>
+
+                  {configData.cdnType === "bunny" && (
+                    <div className="space-y-4 border-l-4 border-orange-200 pl-4 bg-orange-50 p-4 rounded">
+                      <h4 className="font-medium text-orange-900">Bunny CDN Configuration</h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <Label htmlFor="bunnyApiKey">API Key</Label>
+                          <Input
+                            id="bunnyApiKey"
+                            type={showTokens ? "text" : "password"}
+                            value={configData.bunnyApiKey || ""}
+                            onChange={(e) => handleInputChange("bunnyApiKey", e.target.value)}
+                            placeholder="Your Bunny CDN API key"
+                            data-testid="input-bunny-api-key"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="bunnyStorageZone">Storage Zone</Label>
+                          <Input
+                            id="bunnyStorageZone"
+                            value={configData.bunnyStorageZone || ""}
+                            onChange={(e) => handleInputChange("bunnyStorageZone", e.target.value)}
+                            placeholder="your-storage-zone"
+                            data-testid="input-bunny-storage-zone"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="bunnyPullZone">Pull Zone</Label>
+                          <Input
+                            id="bunnyPullZone"
+                            value={configData.bunnyPullZone || ""}
+                            onChange={(e) => handleInputChange("bunnyPullZone", e.target.value)}
+                            placeholder="your-pull-zone"
+                            data-testid="input-bunny-pull-zone"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="bunnyRegion">Region</Label>
+                          <select
+                            id="bunnyRegion"
+                            value={configData.bunnyRegion || "ny"}
+                            onChange={(e) => handleInputChange("bunnyRegion", e.target.value)}
+                            className="w-full p-2 border border-gray-300 rounded-md"
+                            data-testid="select-bunny-region"
+                          >
+                            <option value="ny">New York (US East)</option>
+                            <option value="la">Los Angeles (US West)</option>
+                            <option value="sg">Singapore (Asia)</option>
+                            <option value="sy">Sydney (Australia)</option>
+                            <option value="br">São Paulo (Brazil)</option>
+                            <option value="de">Frankfurt (Europe)</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {configData.cdnType !== "none" && configData.cdnType !== "bunny" && (
+                    <div className="space-y-4 border-l-4 border-blue-200 pl-4 bg-blue-50 p-4 rounded">
+                      <h4 className="font-medium text-blue-900">CDN Base URL</h4>
+                      <div>
+                        <Label htmlFor="cdnBaseUrl">Base URL</Label>
+                        <Input
+                          id="cdnBaseUrl"
+                          value={configData.cdnBaseUrl || ""}
+                          onChange={(e) => handleInputChange("cdnBaseUrl", e.target.value)}
+                          placeholder="https://your-cdn-domain.com"
+                          data-testid="input-cdn-base-url"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">The base URL for your CDN or media server</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="bg-green-50 p-4 rounded-lg">
+                  <h4 className="font-medium text-green-900 mb-2">Media Features:</h4>
+                  <ul className="text-sm text-green-800 space-y-1 list-disc list-inside">
+                    <li>Automatic media upload from WhatsApp webhooks</li>
+                    <li>Image and video preview in chat interface</li>
+                    <li>Optimized media delivery and caching</li>
+                    <li>Thumbnail generation for videos</li>
+                    <li>Download links for documents</li>
+                  </ul>
                 </div>
               </CardContent>
             </Card>

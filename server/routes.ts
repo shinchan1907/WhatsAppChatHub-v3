@@ -785,6 +785,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
               console.log("📊 Message status updates:", change.value.statuses.length);
               for (const status of change.value.statuses) {
                 console.log("📈 Status update:", status.id, "->", status.status);
+                
+                try {
+                  // Update message status in database
+                  await storage.updateMessageStatus(status.id, status.status);
+                  
+                  // If message is read, update read timestamp
+                  if (status.status === "read") {
+                    await storage.updateMessageReadStatus(status.id, true, new Date());
+                  }
+                  
+                  // Broadcast status update to WebSocket clients
+                  const wsMessage = {
+                    type: "message_status_update",
+                    data: { 
+                      messageId: status.id, 
+                      status: status.status,
+                      readAt: status.status === "read" ? new Date().toISOString() : null
+                    },
+                  };
+                  
+                  wsConnections.forEach((ws) => {
+                    if (ws.readyState === WebSocket.OPEN) {
+                      ws.send(JSON.stringify(wsMessage));
+                    }
+                  });
+                  
+                } catch (statusError) {
+                  console.error("❌ Error updating message status:", statusError);
+                }
               }
             }
           }

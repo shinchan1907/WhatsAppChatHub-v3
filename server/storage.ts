@@ -49,6 +49,7 @@ export interface IStorage {
   getMessages(conversationId: string): Promise<Message[]>;
   createMessage(message: InsertMessage): Promise<Message>;
   updateMessageStatus(id: string, status: string): Promise<void>;
+  updateMessageReadStatus(id: string, isRead: boolean, readAt: Date): Promise<void>;
 
   // Template operations
   getTemplates(): Promise<Template[]>;
@@ -352,6 +353,15 @@ class MemStorage implements IStorage {
     this.messages.set(id, message);
   }
 
+  async updateMessageReadStatus(id: string, isRead: boolean, readAt: Date): Promise<void> {
+    const message = this.messages.get(id);
+    if (!message) throw new Error("Message not found");
+    
+    message.isRead = isRead;
+    message.readAt = readAt;
+    this.messages.set(id, message);
+  }
+
   // Template operations
   async getTemplates(): Promise<Template[]> {
     return Array.from(this.templates.values()).filter(t => t.isActive);
@@ -453,6 +463,12 @@ class MemStorage implements IStorage {
       dbName: config.dbName !== undefined ? config.dbName : existing?.dbName || null,
       dbUsername: config.dbUsername !== undefined ? config.dbUsername : existing?.dbUsername || null,
       dbPassword: config.dbPassword !== undefined ? config.dbPassword : existing?.dbPassword || null,
+      cdnType: config.cdnType !== undefined ? config.cdnType : existing?.cdnType || "none",
+      bunnyApiKey: config.bunnyApiKey !== undefined ? config.bunnyApiKey : existing?.bunnyApiKey || null,
+      bunnyStorageZone: config.bunnyStorageZone !== undefined ? config.bunnyStorageZone : existing?.bunnyStorageZone || null,
+      bunnyPullZone: config.bunnyPullZone !== undefined ? config.bunnyPullZone : existing?.bunnyPullZone || null,
+      bunnyRegion: config.bunnyRegion !== undefined ? config.bunnyRegion : existing?.bunnyRegion || "ny",
+      cdnBaseUrl: config.cdnBaseUrl !== undefined ? config.cdnBaseUrl : existing?.cdnBaseUrl || null,
       enableLogging: config.enableLogging ?? existing?.enableLogging ?? true,
       webhookSecret: config.webhookSecret !== undefined ? config.webhookSecret : existing?.webhookSecret || randomUUID(),
       isConfigured: config.isConfigured ?? (
@@ -638,6 +654,16 @@ export class DatabaseStorage implements IStorage {
       .where(eq(messages.id, id));
   }
 
+  async updateMessageReadStatus(id: string, isRead: boolean, readAt: Date): Promise<void> {
+    await db
+      .update(messages)
+      .set({ 
+        isRead,
+        readAt 
+      })
+      .where(eq(messages.id, id));
+  }
+
   // Template operations
   async getTemplates(): Promise<Template[]> {
     return await db.select().from(templates).where(eq(templates.isActive, true));
@@ -740,6 +766,12 @@ export class DatabaseStorage implements IStorage {
       dbName: config.dbName !== undefined ? config.dbName : existing?.dbName || null,
       dbUsername: config.dbUsername !== undefined ? config.dbUsername : existing?.dbUsername || null,
       dbPassword: config.dbPassword !== undefined ? config.dbPassword : existing?.dbPassword || null,
+      cdnType: config.cdnType !== undefined ? config.cdnType : existing?.cdnType || "none",
+      bunnyApiKey: config.bunnyApiKey !== undefined ? config.bunnyApiKey : existing?.bunnyApiKey || null,
+      bunnyStorageZone: config.bunnyStorageZone !== undefined ? config.bunnyStorageZone : existing?.bunnyStorageZone || null,
+      bunnyPullZone: config.bunnyPullZone !== undefined ? config.bunnyPullZone : existing?.bunnyPullZone || null,
+      bunnyRegion: config.bunnyRegion !== undefined ? config.bunnyRegion : existing?.bunnyRegion || "ny",
+      cdnBaseUrl: config.cdnBaseUrl !== undefined ? config.cdnBaseUrl : existing?.cdnBaseUrl || null,
       enableLogging: config.enableLogging ?? existing?.enableLogging ?? true,
       webhookSecret: config.webhookSecret !== undefined ? config.webhookSecret : existing?.webhookSecret || randomUUID(),
       isConfigured: config.isConfigured ?? existing?.isConfigured ?? false,

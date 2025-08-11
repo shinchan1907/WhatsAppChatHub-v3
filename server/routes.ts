@@ -696,15 +696,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
               res.status(400).json({ message: `Bunny CDN connection failed: ${result}` });
             }
           } else if (cdnConfig.cdnType === "custom" && cdnConfig.cdnBaseUrl) {
-            // Test custom CDN by checking if base URL is accessible
+            // Test custom CDN by checking if base URL responds (404 is acceptable for empty CDN)
             const customResponse = await fetch(cdnConfig.cdnBaseUrl, {
               method: "HEAD",
             });
             
-            if (customResponse.ok) {
-              res.json({ message: "Custom CDN connection successful" });
+            // For CDNs, 404 is normal when there's no content at root
+            // We just want to ensure the domain/CDN responds
+            if (customResponse.status < 500 && customResponse.status !== 0) {
+              res.json({ 
+                message: `Custom CDN connection successful (Status: ${customResponse.status})`,
+                details: "CDN is responding and ready to serve content"
+              });
             } else {
-              res.status(400).json({ message: "Custom CDN connection failed" });
+              res.status(400).json({ 
+                message: `Custom CDN connection failed (Status: ${customResponse.status})` 
+              });
             }
           } else if (cdnConfig.cdnType === "aws") {
             res.json({ message: "AWS S3 connection test not implemented yet" });

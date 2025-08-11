@@ -680,13 +680,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
               return res.status(400).json({ message: "Bunny CDN credentials not configured" });
             }
             
-            // Test Bunny CDN API connection
-            const bunnyResponse = await fetch(`https://api.bunny.net/storage/${cdnConfig.bunnyStorageZone}/`, {
-              method: "GET",
-              headers: {
-                "AccessKey": cdnConfig.bunnyApiKey,
-              },
-            });
+            // Test Bunny CDN API connection - First try the storage API, then fallback to main API
+            let bunnyResponse;
+            try {
+              // Try the Edge Storage API first
+              bunnyResponse = await fetch(`https://${cdnConfig.bunnyRegion}.storage.bunnycdn.com/${cdnConfig.bunnyStorageZone}/`, {
+                method: "GET",
+                headers: {
+                  "AccessKey": cdnConfig.bunnyApiKey,
+                },
+              });
+            } catch (storageError) {
+              // Fallback to main API to test credentials
+              bunnyResponse = await fetch(`https://api.bunny.net/pullzone`, {
+                method: "GET",
+                headers: {
+                  "AccessKey": cdnConfig.bunnyApiKey,
+                },
+              });
+            }
             
             if (bunnyResponse.ok) {
               res.json({ message: "Bunny CDN connection successful" });

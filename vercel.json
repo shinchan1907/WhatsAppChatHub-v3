@@ -3,13 +3,13 @@
   "builds": [
     {
       "src": "server/index.ts",
-      "use": "@vercel/node"
-    },
-    {
-      "src": "client/package.json",
-      "use": "@vercel/static-build",
+      "use": "@vercel/node",
       "config": {
-        "distDir": "dist/public"
+        "includeFiles": [
+          "server/**/*",
+          "shared/**/*",
+          "package.json"
+        ]
       }
     }
   ],
@@ -19,11 +19,24 @@
       "dest": "server/index.ts"
     },
     {
+      "src": "/health",
+      "dest": "server/index.ts"
+    },
+    {
+      "src": "/status",
+      "dest": "server/index.ts"
+    },
+    {
       "src": "/(.*)",
-      "dest": "client/dist/$1"
+      "dest": "/index.html"
     }
   ],
   "env": {
     "NODE_ENV": "production"
+  },
+  "functions": {
+    "server/index.ts": {
+      "maxDuration": 30
+    }
   }
 }

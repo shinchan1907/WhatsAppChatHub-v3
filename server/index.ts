@@ -1,88 +1,160 @@
 import express, { type Request, Response, NextFunction } from "express";
-import { registerRoutes } from "./routes";
-import { setupVite, serveStatic, log } from "./vite";
-import { createServer } from "http";
+import cors from "cors";
+import { config } from "dotenv";
+
+// Load environment variables
+config();
 
 const app = express();
-app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
 
-app.use((req, res, next) => {
-  const start = Date.now();
-  const path = req.path;
-  let capturedJsonResponse: Record<string, any> | undefined = undefined;
+// ============================================================================
+// BASIC MIDDLEWARE
+// ============================================================================
 
-  const originalResJson = res.json;
-  res.json = function (bodyJson, ...args) {
-    capturedJsonResponse = bodyJson;
-    return originalResJson.apply(res, [bodyJson, ...args]);
-  };
+app.use(cors({
+  origin: process.env.NODE_ENV === "production" 
+    ? [process.env.FRONTEND_URL || "https://yourdomain.com"]
+    : ["http://localhost:3000", "http://localhost:5000"],
+  credentials: true,
+}));
 
-  res.on("finish", () => {
-    const duration = Date.now() - start;
-    if (path.startsWith("/api")) {
-      let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
-      }
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
-      if (logLine.length > 80) {
-        logLine = logLine.slice(0, 79) + "…";
-      }
+// ============================================================================
+// HEALTH CHECK & STATUS ENDPOINTS
+// ============================================================================
 
-      log(logLine);
-    }
+app.get("/health", (req: Request, res: Response) => {
+  res.json({
+    status: "healthy",
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV,
+    version: process.env.npm_package_version || "1.0.0",
   });
-
-  next();
 });
 
-// Initialize routes and get HTTP server
-let httpServer: any = null;
+app.get("/status", (req: Request, res: Response) => {
+  res.json({
+    uptime: process.uptime(),
+    memory: process.memoryUsage(),
+    platform: process.platform,
+    nodeVersion: process.version,
+  });
+});
 
-(async () => {
-  try {
-    httpServer = await registerRoutes(app);
-  } catch (error) {
-    log(`Error registering routes: ${error}`);
-  }
-})();
+// ============================================================================
+// API ROUTES
+// ============================================================================
 
-// Error handling middleware
-app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
+// API Documentation
+app.get("/api/v1/docs", (req: Request, res: Response) => {
+  res.json({
+    message: "WhatsApp Business Hub API Documentation",
+    version: "v1",
+    endpoints: {
+      health: "/health",
+      status: "/status",
+      docs: "/api/v1/docs",
+    },
+    documentation: "https://docs.whatsappbusinesshub.com",
+    support: "https://support.whatsappbusinesshub.com",
+  });
+});
+
+// Feature Flags
+app.get("/api/v1/features", (req: Request, res: Response) => {
+  res.json({
+    features: {
+      // Core Features
+      contacts: { enabled: true, plan: "all" },
+      conversations: { enabled: true, plan: "all" },
+      messages: { enabled: true, plan: "all" },
+      templates: { enabled: true, plan: "all" },
+      broadcasts: { enabled: true, plan: "all" },
+      
+      // Advanced Features
+      automation: { enabled: true, plan: "professional" },
+      segments: { enabled: true, plan: "professional" },
+      campaigns: { enabled: true, plan: "professional" },
+      analytics: { enabled: true, plan: "professional" },
+      
+      // Enterprise Features
+      ai: { enabled: true, plan: "enterprise" },
+      integrations: { enabled: true, plan: "enterprise" },
+      webhooks: { enabled: true, plan: "enterprise" },
+      api: { enabled: true, plan: "enterprise" },
+    },
+    timestamp: new Date().toISOString(),
+  });
+});
+
+// Rate Limiting Info
+app.get("/api/v1/rate-limits", (req: Request, res: Response) => {
+  res.json({
+    rateLimits: {
+      general: {
+        windowMs: "15 minutes",
+        max: 100,
+        description: "General API requests per IP",
+      },
+      auth: {
+        windowMs: "15 minutes",
+        max: 5,
+        description: "Authentication attempts per IP",
+      },
+    },
+    timestamp: new Date().toISOString(),
+  });
+});
+
+// ============================================================================
+// ERROR HANDLING
+// ============================================================================
+
+// 404 handler
+app.use("*", (req: Request, res: Response) => {
+  res.status(404).json({
+    error: "Not Found",
+    message: `Route ${req.originalUrl} not found`,
+    timestamp: new Date().toISOString(),
+  });
+});
+
+// Global error handler
+app.use((err: any, req: Request, res: Response, next: NextFunction) => {
+  console.error("Error:", err);
+  
   const status = err.status || err.statusCode || 500;
   const message = err.message || "Internal Server Error";
 
-  log(`Error: ${status} - ${message}`);
-  res.status(status).json({ message });
+  res.status(status).json({
+    error: "Server Error",
+    message,
+    timestamp: new Date().toISOString(),
+  });
 });
 
-// Setup static file serving for production
-if (app.get("env") === "development") {
-  // Development: Setup Vite dev server
-  (async () => {
-    try {
-      if (httpServer) {
-        await setupVite(app, httpServer);
-        
-        const isWindows = process.platform === "win32";
-        const port = parseInt(process.env.PORT || "5000", 10);
+// ============================================================================
+// DEVELOPMENT SERVER (ONLY FOR LOCAL DEVELOPMENT)
+// ============================================================================
 
-        httpServer.listen({
-          port,
-          host: isWindows ? "127.0.0.1" : "0.0.0.0",
-        }, () => {
-          log(`Development server running on http://${isWindows ? "127.0.0.1" : "0.0.0.0"}:${port}`);
-        });
-      }
-    } catch (error) {
-      log(`Error setting up development server: ${error}`);
-    }
-  })();
-} else {
-  // Production: Serve static files
-  serveStatic(app);
+if (process.env.NODE_ENV === "development") {
+  const PORT = process.env.PORT || 5000;
+  
+  app.listen(PORT, () => {
+    console.log(`🚀 Development server running on http://localhost:${PORT}`);
+    console.log(`📊 Health check: http://localhost:${PORT}/health`);
+    console.log(`📈 Status: http://localhost:${PORT}/status`);
+  });
 }
 
-// Export the Express app for Vercel
+// ============================================================================
+// VERCEL EXPORT
+// ============================================================================
+
+// Export for Vercel serverless functions
 export default app;
+
+// Export for direct server usage
+export { app as server };

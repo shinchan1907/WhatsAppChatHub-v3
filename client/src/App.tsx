@@ -6,13 +6,15 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAuth } from "@/hooks/use-auth";
 import Login from "@/pages/login";
 import Dashboard from "@/pages/dashboard";
-import Settings from "@/pages/settings";
 import NotFound from "@/pages/not-found";
 
 function Router() {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, user, token } = useAuth();
+
+  console.log("App Router: Auth state:", { isAuthenticated, isLoading, user: !!user, token: !!token });
 
   if (isLoading) {
+    console.log("App Router: Loading...");
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center">
@@ -23,15 +25,19 @@ function Router() {
     );
   }
 
+  console.log("App Router: Not loading, isAuthenticated:", isAuthenticated);
+
   return (
     <Switch>
       {!isAuthenticated ? (
-        <Route path="/" component={Login} />
+        <>
+          <Route path="/" component={Login} />
+          <Route path="/dashboard" component={Login} />
+        </>
       ) : (
         <>
           <Route path="/" component={Dashboard} />
           <Route path="/dashboard" component={Dashboard} />
-          <Route path="/settings" component={Settings} />
         </>
       )}
       <Route component={NotFound} />

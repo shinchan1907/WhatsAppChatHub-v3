@@ -135,7 +135,7 @@ export const messages = pgTable("messages", {
   conversationId: uuid("conversation_id").references(() => conversations.id).notNull(),
   contactId: uuid("contact_id").references(() => contacts.id).notNull(),
   whatsappAccountId: uuid("whatsapp_account_id").references(() => whatsappAccounts.id).notNull(),
-  type: text("type").notNull(), // text, image, video, audio, document, location, contact, sticker
+  type: text("type").notNull(), // text, image, video, audio, document, location, contact, sticker, template
   direction: text("direction").notNull(), // inbound, outbound
   content: text("content"),
   mediaUrl: text("media_url"),
@@ -143,7 +143,9 @@ export const messages = pgTable("messages", {
   mediaSize: integer("media_size"),
   mediaDuration: integer("media_duration"),
   mediaThumbnail: text("media_thumbnail"),
-  replyTo: uuid("reply_to").references(() => messages.id),
+  templateId: uuid("template_id"), // For template messages
+  templateVariables: jsonb("template_variables").default({}), // Template variables
+  replyTo: uuid("reply_to"), // Remove circular reference
   status: text("status").default("sent"), // sent, delivered, read, failed
   statusDetails: jsonb("status_details").default({}),
   pricing: jsonb("pricing").default({}),
@@ -171,6 +173,7 @@ export const messageTemplates = pgTable("message_templates", {
   mediaType: text("media_type"),
   status: text("status").default("pending"), // pending, approved, rejected
   rejectionReason: text("rejection_reason"),
+  whatsappTemplateId: text("whatsapp_template_id"), // WhatsApp Business Manager template ID
   isActive: boolean("is_active").default(true),
   metadata: jsonb("metadata").default({}),
   createdAt: timestamp("created_at").defaultNow(),
@@ -401,6 +404,34 @@ export const aiPredictions = pgTable("ai_predictions", {
 // SYSTEM & AUDIT LOGS
 // ============================================================================
 
+export const applicationSettings = pgTable("application_settings", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: uuid("organization_id").references(() => organizations.id).notNull(),
+  key: text("key").notNull(),
+  value: jsonb("value").notNull(),
+  category: text("category").notNull(), // whatsapp, cdn, notifications, security, general
+  description: text("description"),
+  isEncrypted: boolean("is_encrypted").default(false),
+  metadata: jsonb("metadata").default({}),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const userPreferences = pgTable("user_preferences", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: uuid("user_id").references(() => users.id).notNull(),
+  organizationId: uuid("organization_id").references(() => organizations.id).notNull(),
+  preferences: jsonb("preferences").notNull().default({}),
+  theme: text("theme").default("light"), // light, dark, system
+  language: text("language").default("en"),
+  timezone: text("timezone"),
+  dateFormat: text("date_format").default("MM/DD/YYYY"),
+  timeFormat: text("time_format").default("12h"), // 12h, 24h
+  metadata: jsonb("metadata").default({}),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 export const auditLogs = pgTable("audit_logs", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
   organizationId: uuid("organization_id").references(() => organizations.id).notNull(),
@@ -423,6 +454,24 @@ export const systemLogs = pgTable("system_logs", {
   message: text("message").notNull(),
   context: jsonb("context").default({}),
   stackTrace: text("stack_trace"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// ============================================================================
+// MEDIA & FILE MANAGEMENT
+// ============================================================================
+
+export const mediaFiles = pgTable("media_files", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: uuid("organization_id").references(() => organizations.id).notNull(),
+  filename: text("filename").notNull(),
+  originalName: text("original_name").notNull(),
+  mimeType: text("mime_type").notNull(),
+  size: integer("size").notNull(),
+  url: text("url").notNull(),
+  thumbnailUrl: text("thumbnail_url"),
+  metadata: jsonb("metadata").default({}),
+  uploadedBy: uuid("uploaded_by").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -507,6 +556,43 @@ export const insertCampaignSchema = createInsertSchema(campaigns).omit({
   updatedAt: true,
 });
 
+export const insertApplicationSettingsSchema = createInsertSchema(applicationSettings).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertUserPreferencesSchema = createInsertSchema(userPreferences).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertAnalyticsEventSchema = createInsertSchema(analyticsEvents).omit({
+  id: true,
+  timestamp: true,
+});
+
+export const insertAnalyticsMetricSchema = createInsertSchema(analyticsMetrics).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertAuditLogSchema = createInsertSchema(auditLogs).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertSystemLogSchema = createInsertSchema(systemLogs).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertMediaFileSchema = createInsertSchema(mediaFiles).omit({
+  id: true,
+  createdAt: true,
+});
+
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -553,7 +639,23 @@ export type InsertSegment = z.infer<typeof insertSegmentSchema>;
 export type Campaign = typeof campaigns.$inferSelect;
 export type InsertCampaign = z.infer<typeof insertCampaignSchema>;
 
+export type ApplicationSettings = typeof applicationSettings.$inferSelect;
+export type InsertApplicationSettings = z.infer<typeof insertApplicationSettingsSchema>;
+
+export type UserPreferences = typeof userPreferences.$inferSelect;
+export type InsertUserPreferences = z.infer<typeof insertUserPreferencesSchema>;
+
 export type AnalyticsEvent = typeof analyticsEvents.$inferSelect;
+export type InsertAnalyticsEvent = z.infer<typeof insertAnalyticsEventSchema>;
+
 export type AnalyticsMetric = typeof analyticsMetrics.$inferSelect;
+export type InsertAnalyticsMetric = z.infer<typeof insertAnalyticsMetricSchema>;
+
 export type AuditLog = typeof auditLogs.$inferSelect;
+export type InsertAuditLog = z.infer<typeof insertAuditLogSchema>;
+
 export type SystemLog = typeof systemLogs.$inferSelect;
+export type InsertSystemLog = z.infer<typeof insertSystemLogSchema>;
+
+export type MediaFile = typeof mediaFiles.$inferSelect;
+export type InsertMediaFile = z.infer<typeof insertMediaFileSchema>;

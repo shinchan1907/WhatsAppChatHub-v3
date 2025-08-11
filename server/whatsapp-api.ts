@@ -83,7 +83,7 @@ export interface WhatsAppWebhookEntry {
 
 export class WhatsAppAPIService {
   private config: AppConfig;
-  private baseUrl = "https://graph.facebook.com/v18.0";
+  private baseUrl = "https://graph.facebook.com/v21.0";
 
   constructor(config: AppConfig) {
     this.config = config;
@@ -249,13 +249,20 @@ export class WhatsAppAPIService {
     }
 
     try {
-      const response = await fetch(`${this.baseUrl}/${this.config.whatsappPhoneNumberId}`, {
+      const response = await fetch(`${this.baseUrl}/${this.config.whatsappPhoneNumberId}?fields=id,display_phone_number,verified_name`, {
         headers: {
           "Authorization": `Bearer ${this.config.whatsappAccessToken}`,
         },
       });
 
       if (response.ok) {
+        const data = await response.json();
+        if (data.error) {
+          return { 
+            success: false, 
+            error: data.error.message || "WhatsApp API error" 
+          };
+        }
         return { success: true };
       } else {
         const result = await response.json();
@@ -285,7 +292,7 @@ export class WhatsAppAPIService {
 
       if (!waBaId) {
         console.log("📋 Attempting to get WABA ID from phone number...");
-        const phoneResponse = await fetch(`https://graph.facebook.com/v21.0/${this.config.whatsappPhoneNumberId}?fields=whatsapp_business_account_id`, {
+        const phoneResponse = await fetch(`https://graph.facebook.com/v21.0/${this.config.whatsappPhoneNumberId}?fields=id,whatsapp_business_account_id,display_phone_number`, {
           headers: {
             "Authorization": `Bearer ${this.config.whatsappAccessToken}`,
           },

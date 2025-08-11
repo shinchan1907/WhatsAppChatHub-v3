@@ -1,9 +1,11 @@
-import express, { type Request, Response, NextFunction } from "express";
-import cors from "cors";
 import { config } from "dotenv";
 
-// Load environment variables
+// Load environment variables FIRST, before any other imports
 config();
+
+import express, { type Request, Response, NextFunction } from "express";
+import cors from "cors";
+import { initializeDatabase } from "./db";
 
 const app = express();
 
@@ -14,7 +16,7 @@ const app = express();
 app.use(cors({
   origin: process.env.NODE_ENV === "production" 
     ? [process.env.FRONTEND_URL || "https://yourdomain.com"]
-    : ["http://localhost:3000", "http://localhost:5000"],
+    : ["http://localhost:3000", "http://localhost:3001", "http://localhost:5000", "http://localhost:5001"],
   credentials: true,
 }));
 
@@ -46,6 +48,21 @@ app.get("/status", (req: Request, res: Response) => {
 // ============================================================================
 // API ROUTES
 // ============================================================================
+
+// Import and use authentication routes
+import authRoutes from "./routes/auth.js";
+import settingsRoutes from "./routes/settings.js";
+import templatesRoutes from "./routes/templates.js";
+import automationRoutes from "./routes/automation.js";
+import contactsRoutes from "./routes/contacts.js";
+import conversationsRoutes from "./routes/conversations.js";
+
+app.use("/api/v1/auth", authRoutes);
+app.use("/api/v1/settings", settingsRoutes);
+app.use("/api/v1/templates", templatesRoutes);
+app.use("/api/v1/automation", automationRoutes);
+app.use("/api/v1/contacts", contactsRoutes);
+app.use("/api/v1/conversations", conversationsRoutes);
 
 // API Documentation
 app.get("/api/v1/docs", (req: Request, res: Response) => {
@@ -142,11 +159,17 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
 if (process.env.NODE_ENV === "development") {
   const PORT = process.env.PORT || 5000;
   
-  app.listen(PORT, () => {
-    console.log(`🚀 Development server running on http://localhost:${PORT}`);
-    console.log(`📊 Health check: http://localhost:${PORT}/health`);
-    console.log(`📈 Status: http://localhost:${PORT}/status`);
-  });
+         // Initialize database
+       initializeDatabase().then(() => {
+         app.listen(PORT, () => {
+           console.log(`🚀 Development server running on http://localhost:${PORT}`);
+           console.log(`📊 Health check: http://localhost:${PORT}/health`);
+           console.log(`📈 Status: http://localhost:${PORT}/status`);
+         });
+       }).catch((error) => {
+         console.error("❌ Failed to initialize database:", error);
+         process.exit(1);
+       });
 }
 
 // ============================================================================

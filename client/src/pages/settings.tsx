@@ -1,759 +1,566 @@
-import { useState, useEffect } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { useToast } from "@/hooks/use-toast";
+import { 
+  User, 
+  Shield, 
+  Bell, 
+  MessageCircle, 
+  Cloud, 
+  Download, 
+  Upload,
+  TestTube,
+  Save,
+  CheckCircle,
+  XCircle,
+  Settings as SettingsIcon,
+  RefreshCw
+} from "lucide-react";
+import { toast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 
-interface ConfigData {
-  whatsappAccessToken: string;
-  whatsappPhoneNumberId: string;
-  whatsappBusinessAccountId: string;
-  whatsappWebhookVerifyToken: string;
-  n8nWebhookUrl: string;
-  n8nApiKey: string;
-  n8nEnabled: boolean;
-  usePersistentDb: boolean;
-  dbHost: string;
-  dbPort: string;
-  dbName: string;
-  dbUsername: string;
-  dbPassword: string;
-  cdnType: string;
-  bunnyApiKey: string;
-  bunnyStorageZone: string;
-  bunnyPullZone: string;
-  bunnyRegion: string;
-  cdnBaseUrl: string;
-  enableLogging: boolean;
-  webhookSecret: string;
-  isConfigured: boolean;
+// Types for better type safety
+interface WhatsAppSettings {
+  phoneNumber: string;
+  phoneNumberId: string;
+  businessAccountId: string;
+  accessToken: string;
+  webhookVerifyToken: string;
+  webhookUrl: string;
 }
 
+interface CDNSettings {
+  provider: 'bunny' | 'cloudflare' | 'aws' | 'azure';
+  apiKey: string;
+  zoneName: string;
+  pullZoneUrl: string;
+  storageZone: string;
+  region: 'de' | 'us' | 'uk' | 'sg' | 'au';
+}
+
+interface NotificationSettings {
+  emailNotifications: boolean;
+  pushNotifications: boolean;
+  messageAlerts: boolean;
+  deliveryReports: boolean;
+  weeklyReports: boolean;
+  monthlyReports: boolean;
+}
+
+interface SecuritySettings {
+  twoFactorAuth: boolean;
+  sessionTimeout: string;
+  passwordExpiry: string;
+  loginNotifications: boolean;
+  suspiciousActivityAlerts: boolean;
+}
+
+// Status types for better state management
+type TestStatus = 'idle' | 'testing' | 'success' | 'error';
+type ConnectionStatus = 'disconnected' | 'connected' | 'error';
+type SyncStatus = 'idle' | 'syncing' | 'success' | 'error';
+
+// Constants for better maintainability
+const CDN_PROVIDERS = [
+  { value: 'bunny', label: 'Bunny CDN' },
+  { value: 'cloudflare', label: 'Cloudflare' },
+  { value: 'aws', label: 'AWS CloudFront' },
+  { value: 'azure', label: 'Azure CDN' }
+] as const;
+
+const REGIONS = [
+  { value: 'de', label: 'Germany (DE)' },
+  { value: 'us', label: 'United States (US)' },
+  { value: 'uk', label: 'United Kingdom (UK)' },
+  { value: 'sg', label: 'Singapore (SG)' },
+  { value: 'au', label: 'Australia (AU)' }
+] as const;
+
 export default function Settings() {
-  const [configData, setConfigData] = useState<ConfigData>({
-    whatsappAccessToken: "",
-    whatsappPhoneNumberId: "",
-    whatsappBusinessAccountId: "",
-    whatsappWebhookVerifyToken: "",
-    n8nWebhookUrl: "",
-    n8nApiKey: "",
-    n8nEnabled: false,
-    usePersistentDb: false,
-    dbHost: "",
-    dbPort: "",
-    dbName: "",
-    dbUsername: "",
-    dbPassword: "",
-    cdnType: "none",
-    bunnyApiKey: "",
-    bunnyStorageZone: "",
-    bunnyPullZone: "",
-    bunnyRegion: "ny",
-    cdnBaseUrl: "",
-    enableLogging: true,
-    webhookSecret: "",
-    isConfigured: false,
+  const { user, logout } = useAuth();
+  
+  // State management with proper typing
+  const [whatsappSettings, setWhatsappSettings] = useState<WhatsAppSettings>({
+    phoneNumber: '',
+    phoneNumberId: '',
+    businessAccountId: '',
+    accessToken: '',
+    webhookVerifyToken: '',
+    webhookUrl: ''
   });
 
-  const [connectionStatus, setConnectionStatus] = useState<{
-    whatsapp: "unknown" | "testing" | "success" | "failed";
-    n8n: "unknown" | "testing" | "success" | "failed";
-    cdn: "unknown" | "testing" | "success" | "failed";
-  }>({ whatsapp: "unknown", n8n: "unknown", cdn: "unknown" });
-
-  const [showTokens, setShowTokens] = useState(false);
-
-  const { toast } = useToast();
-  const queryClient = useQueryClient();
-
-  const { data: currentConfig, isLoading } = useQuery<ConfigData>({
-    queryKey: ["/api/settings/config"],
+  const [cdnSettings, setCdnSettings] = useState<CDNSettings>({
+    provider: 'bunny',
+    apiKey: '',
+    zoneName: '',
+    pullZoneUrl: '',
+    storageZone: '',
+    region: 'de'
   });
 
-  // Update form data when config loads
+  const [notifications, setNotifications] = useState<NotificationSettings>({
+    emailNotifications: true,
+    pushNotifications: true,
+    messageAlerts: true,
+    deliveryReports: true,
+    weeklyReports: false,
+    monthlyReports: true
+  });
+
+  const [security, setSecurity] = useState<SecuritySettings>({
+    twoFactorAuth: false,
+    sessionTimeout: '24',
+    passwordExpiry: '90',
+    loginNotifications: true,
+    suspiciousActivityAlerts: true
+  });
+
+  // Status states
+  const [whatsappTestStatus, setWhatsappTestStatus] = useState<TestStatus>('idle');
+  const [cdnTestStatus, setCdnTestStatus] = useState<TestStatus>('idle');
+  const [syncTemplatesStatus, setSyncTemplatesStatus] = useState<SyncStatus>('idle');
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('connected');
+
+  // Temporary organization ID for testing - remove in production
+  const [tempOrgId, setTempOrgId] = useState('0994772b-cd9e-4fe6-b31e-aad537c4c37e');
+
+  // Memoized headers to prevent unnecessary re-renders
+  const apiHeaders = useMemo(() => ({
+    'x-organization-id': tempOrgId,
+    'x-user-id': user?.id || 'test'
+  }), [tempOrgId, user?.id]);
+
+  // Optimized API request wrapper
+  const makeApiRequest = useCallback(async (
+    endpoint: string, 
+    method: 'GET' | 'POST' | 'PUT' | 'DELETE' = 'GET',
+    data?: any
+  ) => {
+    try {
+      const response = await apiRequest(method, endpoint, data, apiHeaders);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
+      }
+      return await response.json();
+    } catch (error: any) {
+      console.error(`API Error (${endpoint}):`, error);
+      throw error;
+    }
+  }, [apiHeaders]);
+
+  // Load settings with error handling
+  const loadSettings = useCallback(async () => {
+    try {
+      const [whatsappData, cdnData, notificationData, securityData] = await Promise.all([
+        makeApiRequest('/api/v1/settings/whatsapp'),
+        makeApiRequest('/api/v1/settings/cdn'),
+        makeApiRequest('/api/v1/settings/notifications'),
+        makeApiRequest('/api/v1/settings/security')
+      ]);
+
+      if (whatsappData.success && whatsappData.data) {
+        setWhatsappSettings(prev => ({ ...prev, ...whatsappData.data }));
+      }
+      if (cdnData.success && cdnData.data) {
+        setCdnSettings(prev => ({ ...prev, ...cdnData.data }));
+      }
+      if (notificationData.success && notificationData.data) {
+        setNotifications(prev => ({ ...prev, ...notificationData.data }));
+      }
+      if (securityData.success && securityData.data) {
+        setSecurity(prev => ({ ...prev, ...securityData.data }));
+      }
+    } catch (error: any) {
+      console.error('Failed to load settings:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load settings. Please refresh the page.",
+        variant: "destructive",
+      });
+    }
+  }, [makeApiRequest]);
+
+  // Check connection status
+  const checkConnectionStatus = useCallback(async () => {
+    try {
+      const data = await makeApiRequest('/api/v1/settings/whatsapp');
+      if (data.success && data.data && data.data.accessToken) {
+        setConnectionStatus('connected');
+      } else {
+        setConnectionStatus('disconnected');
+      }
+    } catch (error) {
+      setConnectionStatus('disconnected');
+    }
+  }, [makeApiRequest]);
+
+  // Load settings and check connection on mount
   useEffect(() => {
-    if (currentConfig) {
-      setConfigData(currentConfig);
+    loadSettings();
+    checkConnectionStatus();
+  }, [loadSettings, checkConnectionStatus]);
+
+  // WhatsApp settings save with validation
+  const handleWhatsappSave = useCallback(async () => {
+    try {
+      // Validation
+      const requiredFields = ['phoneNumber', 'phoneNumberId', 'businessAccountId', 'accessToken'];
+      const missingFields = requiredFields.filter(field => !whatsappSettings[field as keyof WhatsAppSettings]);
+      
+      if (missingFields.length > 0) {
+          toast({
+          title: "Validation Error",
+          description: `Please fill in: ${missingFields.join(', ')}`,
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const data = await makeApiRequest('/api/v1/settings/whatsapp', 'POST', whatsappSettings);
+      
+        if (data.success) {
+          toast({
+          title: "Success",
+          description: "WhatsApp settings saved successfully. You can now test the connection or sync templates.",
+        });
+        setConnectionStatus('connected');
+      }
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to save WhatsApp settings.",
+        variant: "destructive",
+      });
     }
-  }, [currentConfig]);
+  }, [whatsappSettings, makeApiRequest]);
 
-  const configMutation = useMutation({
-    mutationFn: async (data: ConfigData) => {
-      const response = await apiRequest("POST", "/api/settings/config", data);
-      return response.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/settings/config"] });
-      toast({
-        title: "Configuration saved",
-        description: "Your settings have been saved successfully.",
+  // Test WhatsApp API connection
+  const testWhatsappApi = useCallback(async () => {
+    setWhatsappTestStatus('testing');
+    
+    // Debug logging
+    console.log('🔍 Frontend sending WhatsApp test with:');
+    console.log('  Phone Number:', whatsappSettings.phoneNumber);
+    console.log('  Phone Number ID:', whatsappSettings.phoneNumberId);
+    console.log('  Business Account ID:', whatsappSettings.businessAccountId);
+    console.log('  Access Token length:', whatsappSettings.accessToken?.length);
+    console.log('  Access Token preview:', whatsappSettings.accessToken?.substring(0, 20) + '...');
+    
+    try {
+      const data = await makeApiRequest('/api/v1/settings/whatsapp/test', 'POST', {
+        phoneNumber: whatsappSettings.phoneNumber,
+        phoneNumberId: whatsappSettings.phoneNumberId,
+        businessAccountId: whatsappSettings.businessAccountId,
+        accessToken: whatsappSettings.accessToken
       });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Failed to save configuration",
-        description: error.message || "There was an error saving your settings.",
-        variant: "destructive",
+
+        if (data.success) {
+        setWhatsappTestStatus('success');
+        setConnectionStatus('connected');
+          toast({
+          title: "Success",
+          description: "WhatsApp API connection test successful.",
+          });
+      }
+    } catch (error: any) {
+      setWhatsappTestStatus('error');
+      
+      // Check if this is an expected WhatsApp API error (invalid credentials)
+      if (error.message && error.message.includes('400 Bad Request')) {
+        setConnectionStatus('disconnected');
+        toast({
+          title: "Invalid Credentials",
+          description: "The WhatsApp API credentials are invalid. Please check your Phone Number ID and Access Token.",
+          variant: "destructive",
+        });
+      } else {
+        setConnectionStatus('error');
+        toast({
+          title: "Connection Failed",
+          description: error.message || "Failed to test WhatsApp API connection.",
+          variant: "destructive",
+        });
+      }
+    }
+  }, [whatsappSettings, makeApiRequest]);
+
+  // Sync templates from WhatsApp Business Manager
+  const syncTemplates = useCallback(async () => {
+    setSyncTemplatesStatus('syncing');
+    try {
+      const data = await makeApiRequest('/api/v1/templates/sync', 'POST', {
+        phoneNumberId: whatsappSettings.phoneNumberId,
+        businessAccountId: whatsappSettings.businessAccountId,
+        accessToken: whatsappSettings.accessToken
       });
-    },
-  });
 
-  const testConnectionMutation = useMutation({
-    mutationFn: async (type: "n8n" | "whatsapp" | "cdn") => {
-      setConnectionStatus(prev => ({ ...prev, [type]: "testing" }));
-      const response = await apiRequest("POST", `/api/settings/test-connection`, { type, config: configData });
-      return { type, result: await response.json() };
-    },
-    onSuccess: ({ type, result }) => {
-      setConnectionStatus(prev => ({ ...prev, [type]: "success" }));
-      toast({
-        title: "Connection successful",
-        description: result.message || "Connection test passed.",
-      });
-    },
-    onError: (error: Error, variables) => {
-      const type = (variables as any)?.type || "unknown";
-      setConnectionStatus(prev => ({ ...prev, [type]: "failed" }));
-      toast({
-        title: "Connection failed",
-        description: error.message || "Connection test failed.",
-        variant: "destructive",
-      });
-    },
-  });
+      if (data.success) {
+        setSyncTemplatesStatus('success');
+        toast({
+          title: "Success",
+          description: `Synced ${data.data?.count || 0} templates successfully.`,
+        });
+      }
+    } catch (error: any) {
+      setSyncTemplatesStatus('error');
+      
+      // Check if this is an expected WhatsApp API error (invalid credentials)
+      if (error.message && error.message.includes('400 Bad Request')) {
+        toast({
+          title: "Invalid Credentials",
+          description: "Cannot sync templates with invalid WhatsApp API credentials. Please check your settings first.",
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Sync Failed",
+          description: error.message || "Failed to sync templates.",
+          variant: "destructive",
+        });
+      }
+    }
+  }, [whatsappSettings, makeApiRequest]);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    configMutation.mutate(configData);
-  };
+  // Generate webhook URL
+  const generateWebhookUrl = useCallback(() => {
+    const webhookUrl = `http://localhost:3000/api/v1/webhooks/whatsapp`;
+    setWhatsappSettings(prev => ({ ...prev, webhookUrl }));
+  }, []);
 
-  const handleInputChange = (field: keyof ConfigData, value: string | boolean) => {
-    setConfigData(prev => ({ ...prev, [field]: value }));
-  };
-
-  const getStatusBadge = (status: string) => {
+  // Utility functions for status display
+  const getStatusIcon = useCallback((status: TestStatus | SyncStatus) => {
     switch (status) {
-      case "success":
-        return <Badge variant="default" className="bg-green-500">Connected</Badge>;
-      case "failed":
-        return <Badge variant="destructive">Failed</Badge>;
-      case "testing":
-        return <Badge variant="secondary">Testing...</Badge>;
+      case 'testing':
+      case 'syncing':
+        return <RefreshCw className="w-4 h-4 animate-spin" />;
+      case 'success':
+        return <CheckCircle className="w-4 h-4 text-green-600" />;
+      case 'error':
+        return <XCircle className="w-4 h-4 text-red-600" />;
       default:
-        return <Badge variant="outline">Unknown</Badge>;
+        return <TestTube className="w-4 h-4" />;
     }
-  };
+  }, []);
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-center">
-          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
-          <p className="text-muted-foreground">Loading settings...</p>
-        </div>
-      </div>
-    );
-  }
+  const getStatusText = useCallback((status: TestStatus | SyncStatus) => {
+    switch (status) {
+      case 'testing':
+        return 'Testing...';
+      case 'syncing':
+        return 'Syncing...';
+      case 'success':
+        return 'Success';
+      case 'error':
+        return 'Failed';
+      default:
+        return 'Test Connection';
+    }
+  }, []);
+
+  const getConnectionStatusBadge = useMemo(() => {
+    const variants = {
+      connected: 'default',
+      error: 'destructive',
+      disconnected: 'secondary'
+    } as const;
+
+    const icons = {
+      connected: <CheckCircle className="w-3 h-3" />,
+      error: <XCircle className="w-3 h-3" />,
+      disconnected: <XCircle className="w-3 h-3" />
+    };
+
+    const labels = {
+      connected: 'Connected',
+      error: 'Connection Error',
+      disconnected: 'Disconnected'
+  };
 
   return (
-    <div className="p-6 max-w-6xl mx-auto">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold text-gray-900">Settings & Configuration</h1>
-        <p className="text-gray-600 mt-2">Configure your WhatsApp Business integration for production use</p>
+      <Badge variant={variants[connectionStatus]} className="flex items-center gap-1">
+        {icons[connectionStatus]}
+        {labels[connectionStatus]}
+      </Badge>
+    );
+  }, [connectionStatus]);
+
+  // Render functions for better organization
+  const renderDebugSection = () => (
+    <Card className="mb-6 bg-yellow-50 border-yellow-200">
+          <CardHeader>
+        <CardTitle className="text-yellow-800">Debug Information (Remove in Production)</CardTitle>
+        <CardDescription>Organization ID being used for testing</CardDescription>
+          </CardHeader>
+      <CardContent>
+        <div className="flex items-center gap-2">
+          <Label htmlFor="orgId">Organization ID:</Label>
+                <Input
+            id="orgId"
+            value={tempOrgId}
+            onChange={(e) => setTempOrgId(e.target.value)}
+            className="font-mono text-sm"
+            placeholder="Enter organization ID"
+                />
+              </div>
+          </CardContent>
+        </Card>
+  );
+
+  const renderWhatsAppSection = () => (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <MessageCircle className="w-5 h-5" />
+              WhatsApp Business API Configuration
+            </CardTitle>
+            <CardDescription>Configure your WhatsApp Business API credentials and webhook settings</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="phoneNumber">Phone Number</Label>
+                <Input
+                  id="phoneNumber"
+                  value={whatsappSettings.phoneNumber}
+                  onChange={(e) => setWhatsappSettings(prev => ({ ...prev, phoneNumber: e.target.value }))}
+                  placeholder="+1234567890"
+                />
+              </div>
+              <div>
+                <Label htmlFor="phoneNumberId">Phone Number ID</Label>
+                <Input
+                  id="phoneNumberId"
+                  value={whatsappSettings.phoneNumberId}
+                  onChange={(e) => setWhatsappSettings(prev => ({ ...prev, phoneNumberId: e.target.value }))}
+                  placeholder="Enter Phone Number ID"
+                />
+              </div>
+              <div>
+                <Label htmlFor="businessAccountId">Business Account ID</Label>
+                <Input
+                  id="businessAccountId"
+                  value={whatsappSettings.businessAccountId}
+                  onChange={(e) => setWhatsappSettings(prev => ({ ...prev, businessAccountId: e.target.value }))}
+                  placeholder="Enter Business Account ID"
+                />
+              </div>
+              <div>
+                <Label htmlFor="accessToken">Access Token</Label>
+                <Input
+                  id="accessToken"
+                  type="password"
+                  value={whatsappSettings.accessToken}
+                  onChange={(e) => setWhatsappSettings(prev => ({ ...prev, accessToken: e.target.value }))}
+                  placeholder="Enter Access Token"
+                />
+              </div>
+              <div>
+                <Label htmlFor="webhookVerifyToken">Webhook Verify Token</Label>
+                <Input
+                  id="webhookVerifyToken"
+                  value={whatsappSettings.webhookVerifyToken}
+                  onChange={(e) => setWhatsappSettings(prev => ({ ...prev, webhookVerifyToken: e.target.value }))}
+                  placeholder="Enter Webhook Verify Token"
+                />
+              </div>
+              <div>
+                <Label htmlFor="webhookUrl">Webhook URL</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="webhookUrl"
+                    value={whatsappSettings.webhookUrl}
+                    onChange={(e) => setWhatsappSettings(prev => ({ ...prev, webhookUrl: e.target.value }))}
+                    placeholder="Webhook URL will be generated"
+                    readOnly
+                  />
+                  <Button onClick={generateWebhookUrl} variant="outline">
+                    Generate
+                  </Button>
+                </div>
+              </div>
+            </div>
+            
+        <div className="flex gap-3 flex-wrap">
+              <Button onClick={handleWhatsappSave} className="bg-green-600 hover:bg-green-700">
+                <Save className="w-4 h-4 mr-2" />
+                Save Settings
+              </Button>
+              <Button 
+                onClick={testWhatsappApi} 
+                variant="outline"
+                disabled={whatsappTestStatus === 'testing'}
+                className="flex items-center gap-2"
+              >
+            {getStatusIcon(whatsappTestStatus)}
+            {getStatusText(whatsappTestStatus)}
+              </Button>
+              <Button 
+            onClick={syncTemplates} 
+                variant="outline"
+            disabled={syncTemplatesStatus === 'syncing' || connectionStatus !== 'connected'}
+                className="flex items-center gap-2"
+              >
+            {getStatusIcon(syncTemplatesStatus)}
+            {syncTemplatesStatus === 'syncing' ? 'Syncing...' : 
+             syncTemplatesStatus === 'success' ? 'Synced' : 
+             syncTemplatesStatus === 'error' ? 'Failed' : 'Sync Templates'}
+              </Button>
+            </div>
+
+        <div className="flex items-center gap-2 mt-2">
+          <span className="text-sm text-gray-600">Status:</span>
+          {getConnectionStatusBadge}
+                </div>
         
-        {configData.isConfigured && (
-          <Alert className="mt-4 border-green-200 bg-green-50">
-            <AlertDescription className="text-green-800">
-              ✓ Your WhatsApp Business API is configured and ready to use. Messages can be sent directly through the application.
-            </AlertDescription>
-          </Alert>
-        )}
+        {/* Help Information */}
+        <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+          <h4 className="font-semibold text-blue-900 mb-2 flex items-center gap-2">
+            <MessageCircle className="w-4 h-4" />
+            Getting Started with WhatsApp Business API
+          </h4>
+          <div className="text-sm text-blue-800 space-y-2">
+            <p>To use WhatsApp Business API, you need:</p>
+            <ul className="list-disc list-inside ml-4 space-y-1">
+              <li><strong>Phone Number ID:</strong> From your WhatsApp Business Manager</li>
+              <li><strong>Business Account ID:</strong> Your Facebook Business Manager ID</li>
+              <li><strong>Access Token:</strong> Generated from Facebook Developer Console</li>
+              <li><strong>Webhook Verify Token:</strong> Custom token for webhook verification</li>
+            </ul>
+            <p className="mt-2 text-blue-700">
+              <strong>Note:</strong> The "Test Connection" and "Sync Templates" buttons will show errors until you provide valid credentials.
+            </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+  );
 
-        {configData.whatsappPhoneNumberId && !configData.whatsappAccessToken && (
-          <Alert className="mt-4 border-red-200 bg-red-50">
-            <AlertDescription className="text-red-800">
-              ⚠️ Missing WhatsApp Access Token! You have Phone Number ID configured but messages cannot be sent without the Access Token. Please add it in the WhatsApp Business tab.
-            </AlertDescription>
-          </Alert>
-        )}
-      </div>
-
-      <Tabs defaultValue="whatsapp" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-5">
-          <TabsTrigger value="whatsapp">WhatsApp Business</TabsTrigger>
-          <TabsTrigger value="media">Media Server</TabsTrigger>
-          <TabsTrigger value="n8n">n8n Integration</TabsTrigger>
-          <TabsTrigger value="webhooks">Webhooks</TabsTrigger>
-          <TabsTrigger value="system">System</TabsTrigger>
-        </TabsList>
-
-        <form onSubmit={handleSubmit}>
-          <TabsContent value="whatsapp" className="space-y-6">
-            <Card>
-              <CardHeader className="pb-4">
-                <div className="flex justify-between items-center">
-                  <div>
-                    <CardTitle>WhatsApp Business Cloud API</CardTitle>
-                    <CardDescription>
-                      Configure your WhatsApp Business Account to send messages directly
-                    </CardDescription>
-                  </div>
-                  {getStatusBadge(connectionStatus.whatsapp)}
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="bg-blue-50 p-4 rounded-lg">
-                  <h4 className="font-medium text-blue-900 mb-2">Quick Setup Guide:</h4>
-                  <ol className="text-sm text-blue-800 space-y-1 list-decimal list-inside">
-                    <li>Create a Facebook App with WhatsApp Business product</li>
-                    <li>Get your Access Token from the Facebook App dashboard</li>
-                    <li>Find your Phone Number ID in WhatsApp Business Account</li>
-                    <li>Configure webhook verification token</li>
-                    <li>Test the connection below</li>
-                  </ol>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                    <Label htmlFor="whatsappAccessToken">Access Token *</Label>
-                    <div className="flex space-x-2">
-                      <Input
-                        id="whatsappAccessToken"
-                        type={showTokens ? "text" : "password"}
-                        value={configData.whatsappAccessToken || ""}
-                        onChange={(e) => handleInputChange("whatsappAccessToken", e.target.value)}
-                        placeholder="EAAxxxxxxxx..."
-                        data-testid="input-access-token"
-                        className="flex-1"
-                      />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="icon"
-                        onClick={() => setShowTokens(!showTokens)}
-                        data-testid="button-toggle-tokens"
-                      >
-                        <i className={`fas ${showTokens ? "fa-eye-slash" : "fa-eye"}`} />
-                      </Button>
-                    </div>
-                    <p className="text-xs text-gray-500 mt-1">From your Facebook App dashboard</p>
-                  </div>
-
-                  <div>
-                    <Label htmlFor="whatsappPhoneNumberId">Phone Number ID *</Label>
-                    <Input
-                      id="whatsappPhoneNumberId"
-                      value={configData.whatsappPhoneNumberId || ""}
-                      onChange={(e) => handleInputChange("whatsappPhoneNumberId", e.target.value)}
-                      placeholder="123456789012345"
-                      data-testid="input-phone-number-id"
-                    />
-                    <p className="text-xs text-blue-600 mt-1">
-                      📋 From webhook logs, your correct Phone Number ID should be: <strong>776001938919357</strong>
-                    </p>
-                    <p className="text-xs text-gray-500 mt-1">From WhatsApp Business Account</p>
-                  </div>
-
-                  <div>
-                    <Label htmlFor="whatsappBusinessAccountId">Business Account ID</Label>
-                    <Input
-                      id="whatsappBusinessAccountId"
-                      value={configData.whatsappBusinessAccountId || ""}
-                      onChange={(e) => handleInputChange("whatsappBusinessAccountId", e.target.value)}
-                      placeholder="732324892861637"
-                      data-testid="input-business-account-id"
-                    />
-                    <p className="text-xs text-blue-600 mt-1">
-                      📋 From webhook logs, your Business Account ID should be: <strong>732324892861637</strong>
-                    </p>
-                    <p className="text-xs text-gray-500 mt-1">Required for template sync from Facebook Business Manager</p>
-                  </div>
-
-                  <div>
-                    <Label htmlFor="whatsappWebhookVerifyToken">Webhook Verify Token</Label>
-                    <Input
-                      id="whatsappWebhookVerifyToken"
-                      value={configData.whatsappWebhookVerifyToken || ""}
-                      onChange={(e) => handleInputChange("whatsappWebhookVerifyToken", e.target.value)}
-                      placeholder="my_secure_token_123"
-                      data-testid="input-webhook-verify-token"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">Custom token for webhook security</p>
-                  </div>
-                </div>
-
-                <div className="flex justify-between items-center pt-4 border-t">
-                  <div className="text-sm text-gray-600">
-                    Status: {connectionStatus.whatsapp === "success" ? "✓ Connected" : 
-                            connectionStatus.whatsapp === "failed" ? "✗ Failed" : "Not tested"}
-                  </div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => testConnectionMutation.mutate("whatsapp")}
-                    disabled={testConnectionMutation.isPending || !configData.whatsappAccessToken || !configData.whatsappPhoneNumberId}
-                    data-testid="button-test-whatsapp"
-                  >
-                    {testConnectionMutation.isPending ? "Testing..." : "Test Connection"}
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="media" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Media Server & CDN Configuration</CardTitle>
-                <CardDescription>
-                  Configure your CDN or media server for WhatsApp media files (images, videos, documents)
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="bg-orange-50 p-4 rounded-lg">
-                  <h4 className="font-medium text-orange-900 mb-2">Supported CDN Providers:</h4>
-                  <ul className="text-sm text-orange-800 space-y-1 list-disc list-inside">
-                    <li>Bunny CDN - High performance global CDN</li>
-                    <li>AWS S3 + CloudFront - Enterprise solution</li>
-                    <li>Cloudinary - Image and video optimization</li>
-                    <li>Custom CDN - Your own media server</li>
-                  </ul>
-                </div>
-
-                <div className="space-y-4">
-                  <div>
-                    <Label htmlFor="cdnType">CDN Provider</Label>
-                    <select
-                      id="cdnType"
-                      value={configData.cdnType || "none"}
-                      onChange={(e) => handleInputChange("cdnType", e.target.value)}
-                      className="w-full p-2 border border-gray-300 rounded-md"
-                      data-testid="select-cdn-type"
-                    >
-                      <option value="none">No CDN (Basic media handling)</option>
-                      <option value="bunny">Bunny CDN</option>
-                      <option value="aws">AWS S3 + CloudFront</option>
-                      <option value="cloudinary">Cloudinary</option>
-                      <option value="custom">Custom CDN</option>
-                    </select>
-                    <p className="text-xs text-gray-500 mt-1">Choose your preferred media hosting provider</p>
-                  </div>
-
-                  {configData.cdnType === "bunny" && (
-                    <div className="space-y-4 border-l-4 border-orange-200 pl-4 bg-orange-50 p-4 rounded">
-                      <h4 className="font-medium text-orange-900">Bunny CDN Configuration</h4>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <Label htmlFor="bunnyApiKey">API Key</Label>
-                          <Input
-                            id="bunnyApiKey"
-                            type={showTokens ? "text" : "password"}
-                            value={configData.bunnyApiKey || ""}
-                            onChange={(e) => handleInputChange("bunnyApiKey", e.target.value)}
-                            placeholder="Your Bunny CDN API key"
-                            data-testid="input-bunny-api-key"
-                          />
-                        </div>
-                        <div>
-                          <Label htmlFor="bunnyStorageZone">Storage Zone</Label>
-                          <Input
-                            id="bunnyStorageZone"
-                            value={configData.bunnyStorageZone || ""}
-                            onChange={(e) => handleInputChange("bunnyStorageZone", e.target.value)}
-                            placeholder="your-storage-zone"
-                            data-testid="input-bunny-storage-zone"
-                          />
-                        </div>
-                        <div>
-                          <Label htmlFor="bunnyPullZone">Pull Zone</Label>
-                          <Input
-                            id="bunnyPullZone"
-                            value={configData.bunnyPullZone || ""}
-                            onChange={(e) => handleInputChange("bunnyPullZone", e.target.value)}
-                            placeholder="your-pull-zone"
-                            data-testid="input-bunny-pull-zone"
-                          />
-                        </div>
-                        <div>
-                          <Label htmlFor="bunnyRegion">Region</Label>
-                          <select
-                            id="bunnyRegion"
-                            value={configData.bunnyRegion || "ny"}
-                            onChange={(e) => handleInputChange("bunnyRegion", e.target.value)}
-                            className="w-full p-2 border border-gray-300 rounded-md"
-                            data-testid="select-bunny-region"
-                          >
-                            <option value="ny">New York (US East)</option>
-                            <option value="la">Los Angeles (US West)</option>
-                            <option value="sg">Singapore (Asia)</option>
-                            <option value="sy">Sydney (Australia)</option>
-                            <option value="br">São Paulo (Brazil)</option>
-                            <option value="de">Frankfurt (Europe)</option>
-                          </select>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {configData.cdnType !== "none" && configData.cdnType !== "bunny" && (
-                    <div className="space-y-4 border-l-4 border-blue-200 pl-4 bg-blue-50 p-4 rounded">
-                      <h4 className="font-medium text-blue-900">CDN Base URL</h4>
-                      <div>
-                        <Label htmlFor="cdnBaseUrl">Base URL</Label>
-                        <Input
-                          id="cdnBaseUrl"
-                          value={configData.cdnBaseUrl || ""}
-                          onChange={(e) => handleInputChange("cdnBaseUrl", e.target.value)}
-                          placeholder="https://your-cdn-domain.com"
-                          data-testid="input-cdn-base-url"
-                        />
-                        <p className="text-xs text-gray-500 mt-1">The base URL for your CDN or media server</p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <div className="bg-green-50 p-4 rounded-lg">
-                  <h4 className="font-medium text-green-900 mb-2">Media Features:</h4>
-                  <ul className="text-sm text-green-800 space-y-1 list-disc list-inside">
-                    <li>Automatic media upload from WhatsApp webhooks</li>
-                    <li>Image and video preview in chat interface</li>
-                    <li>Optimized media delivery and caching</li>
-                    <li>Thumbnail generation for videos</li>
-                    <li>Download links for documents</li>
-                  </ul>
-                </div>
-
-                <div className="flex justify-between items-center pt-4 border-t">
-                  <div className="text-sm text-gray-600">
-                    CDN Status: {connectionStatus.cdn === "success" ? "✓ Connected" : 
-                               connectionStatus.cdn === "failed" ? "✗ Failed" : "Not tested"}
-                  </div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => testConnectionMutation.mutate("cdn")}
-                    disabled={testConnectionMutation.isPending || configData.cdnType === "none"}
-                    data-testid="button-test-cdn"
-                  >
-                    {testConnectionMutation.isPending ? "Testing..." : "Test CDN Connection"}
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="n8n" className="space-y-6">
-            <Card>
-              <CardHeader className="pb-4">
-                <div className="flex justify-between items-center">
-                  <div>
-                    <CardTitle>n8n Integration (Optional)</CardTitle>
-                    <CardDescription>
-                      Connect with n8n for advanced automation workflows
-                    </CardDescription>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <Switch
-                      checked={configData.n8nEnabled}
-                      onCheckedChange={(checked) => handleInputChange("n8nEnabled", checked)}
-                      data-testid="switch-n8n-enabled"
-                    />
-                    {getStatusBadge(connectionStatus.n8n)}
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="bg-purple-50 p-4 rounded-lg">
-                  <h4 className="font-medium text-purple-900 mb-2">n8n Features:</h4>
-                  <ul className="text-sm text-purple-800 space-y-1 list-disc list-inside">
-                    <li>Advanced workflow automation</li>
-                    <li>Multi-step marketing campaigns</li>
-                    <li>External system integrations</li>
-                    <li>Conditional message routing</li>
-                  </ul>
-                </div>
-
-                <div className="space-y-4">
-                  <div>
-                    <Label htmlFor="n8nWebhookUrl">n8n Webhook URL</Label>
-                    <Input
-                      id="n8nWebhookUrl"
-                      value={configData.n8nWebhookUrl || ""}
-                      onChange={(e) => handleInputChange("n8nWebhookUrl", e.target.value)}
-                      placeholder="https://your-n8n-instance.com/webhook/whatsapp"
-                      data-testid="input-n8n-webhook-url"
-                      disabled={!configData.n8nEnabled}
-                    />
-                    <p className="text-xs text-gray-500 mt-1">Your n8n webhook endpoint URL</p>
-                  </div>
-
-                  <div>
-                    <Label htmlFor="n8nApiKey">n8n API Key (Optional)</Label>
-                    <Input
-                      id="n8nApiKey"
-                      type={showTokens ? "text" : "password"}
-                      value={configData.n8nApiKey || ""}
-                      onChange={(e) => handleInputChange("n8nApiKey", e.target.value)}
-                      placeholder="n8n_api_key_xxx"
-                      data-testid="input-n8n-api-key"
-                      disabled={!configData.n8nEnabled}
-                    />
-                    <p className="text-xs text-gray-500 mt-1">For advanced n8n API operations</p>
-                  </div>
-                </div>
-
-                <div className="flex justify-between items-center pt-4 border-t">
-                  <div className="text-sm text-gray-600">
-                    Status: {connectionStatus.n8n === "success" ? "✓ Connected" : 
-                            connectionStatus.n8n === "failed" ? "✗ Failed" : "Not tested"}
-                  </div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => testConnectionMutation.mutate("n8n")}
-                    disabled={testConnectionMutation.isPending || !configData.n8nEnabled || !configData.n8nWebhookUrl}
-                    data-testid="button-test-n8n"
-                  >
-                    {testConnectionMutation.isPending ? "Testing..." : "Test Connection"}
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="webhooks" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Webhook Configuration</CardTitle>
-                <CardDescription>
-                  Webhook endpoints for receiving WhatsApp messages and status updates
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="bg-blue-50 p-4 rounded-lg">
-                  <h4 className="font-medium text-blue-900 mb-2">Setup Instructions:</h4>
-                  <ol className="text-sm text-blue-800 space-y-1 list-decimal list-inside">
-                    <li>Go to Facebook Developer Console → Your App → WhatsApp → Configuration</li>
-                    <li>Add the webhook URL below to "Callback URL"</li>
-                    <li>Use the webhook secret as "Verify Token"</li>
-                    <li>Subscribe to "messages" webhook field</li>
-                    <li>Click "Verify and Save" to complete setup</li>
-                  </ol>
-                </div>
-
-                <div className="space-y-4">
-                  <div>
-                    <Label>Webhook URL (Copy this to Facebook Developer Console)</Label>
-                    <div className="flex space-x-2">
-                      <Input
-                        value={typeof window !== 'undefined' ? `${window.location.origin}/api/webhooks/whatsapp` : ''}
-                        readOnly
-                        className="bg-gray-50 font-mono text-sm"
-                      />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="icon"
-                        onClick={() => {
-                          const url = `${window.location.origin}/api/webhooks/whatsapp`;
-                          navigator.clipboard.writeText(url);
-                        }}
-                        data-testid="button-copy-webhook-url"
-                      >
-                        📋
-                      </Button>
-                    </div>
-                  </div>
-
-                  <div>
-                    <Label>Webhook Secret (Use as Verify Token)</Label>
-                    <div className="flex space-x-2">
-                      <Input
-                        value={configData.webhookSecret || "webhook_verify_token_123"}
-                        readOnly
-                        className="bg-gray-50 font-mono text-sm"
-                      />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="icon"
-                        onClick={() => {
-                          navigator.clipboard.writeText(configData.webhookSecret || "webhook_verify_token_123");
-                        }}
-                        data-testid="button-copy-webhook-secret"
-                      >
-                        📋
-                      </Button>
-                    </div>
-                    <p className="text-xs text-gray-500 mt-1">Copy this exact value to the "Verify Token" field in Facebook Developer Console</p>
-                  </div>
-                </div>
-
-                <div className="bg-amber-50 p-4 rounded-lg">
-                  <h4 className="font-medium text-amber-900 mb-2">Important Notes:</h4>
-                  <ul className="text-sm text-amber-800 space-y-1 list-disc list-inside">
-                    <li>Your webhook URL must be publicly accessible (not localhost)</li>
-                    <li>Use HTTPS in production (required by WhatsApp)</li>
-                    <li>Webhook secret must match exactly between here and Facebook console</li>
-                    <li>After setup, send a test message to your WhatsApp Business number</li>
-                  </ul>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="system" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Database Configuration</CardTitle>
-                <CardDescription>
-                  Configure database storage for persistent data
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label htmlFor="usePersistentDb">Use PostgreSQL Database</Label>
-                    <p className="text-sm text-gray-500">Enable persistent storage instead of in-memory storage</p>
-                  </div>
-                  <Switch
-                    id="usePersistentDb"
-                    checked={configData.usePersistentDb || false}
-                    onCheckedChange={(checked) => handleInputChange("usePersistentDb", checked)}
-                    data-testid="switch-persistent-db"
-                  />
-                </div>
-
-                {configData.usePersistentDb && (
-                  <div className="space-y-4 border-l-4 border-blue-200 pl-4 bg-blue-50 p-4 rounded">
-                    <h4 className="font-medium text-blue-900">Database Connection Details</h4>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <Label htmlFor="dbHost">Host</Label>
-                        <Input
-                          id="dbHost"
-                          value={configData.dbHost || ""}
-                          onChange={(e) => handleInputChange("dbHost", e.target.value)}
-                          placeholder="localhost or IP address"
-                          data-testid="input-db-host"
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="dbPort">Port</Label>
-                        <Input
-                          id="dbPort"
-                          type="number"
-                          value={configData.dbPort || ""}
-                          onChange={(e) => handleInputChange("dbPort", e.target.value)}
-                          placeholder="5432"
-                          data-testid="input-db-port"
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="dbName">Database Name</Label>
-                        <Input
-                          id="dbName"
-                          value={configData.dbName || ""}
-                          onChange={(e) => handleInputChange("dbName", e.target.value)}
-                          placeholder="whatsapp_business"
-                          data-testid="input-db-name"
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="dbUsername">Username</Label>
-                        <Input
-                          id="dbUsername"
-                          value={configData.dbUsername || ""}
-                          onChange={(e) => handleInputChange("dbUsername", e.target.value)}
-                          placeholder="postgres"
-                          data-testid="input-db-username"
-                        />
-                      </div>
-                      <div className="md:col-span-2">
-                        <Label htmlFor="dbPassword">Password</Label>
-                        <Input
-                          id="dbPassword"
-                          type="password"
-                          value={configData.dbPassword || ""}
-                          onChange={(e) => handleInputChange("dbPassword", e.target.value)}
-                          placeholder="Enter database password"
-                          data-testid="input-db-password"
-                        />
-                      </div>
-                    </div>
-                    <div className="bg-amber-50 p-3 rounded border border-amber-200">
-                      <p className="text-xs text-amber-800">
-                        <strong>Note:</strong> Enabling PostgreSQL will persist all chat conversations, contacts, and settings. 
-                        Data will be preserved between sessions and server restarts.
-                      </p>
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>System Configuration</CardTitle>
-                <CardDescription>
-                  General system settings and preferences
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label htmlFor="enableLogging">Enable Logging</Label>
-                    <p className="text-sm text-gray-500">Log webhook events and API calls for debugging</p>
-                  </div>
-                  <Switch
-                    id="enableLogging"
-                    checked={configData.enableLogging}
-                    onCheckedChange={(checked) => handleInputChange("enableLogging", checked)}
-                    data-testid="switch-enable-logging"
-                  />
-                </div>
-
-                <div className="border-t pt-4">
-                  <h4 className="font-medium mb-2">System Status</h4>
-                  <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div className="flex justify-between">
-                      <span>WhatsApp API:</span>
-                      <span className={configData.isConfigured ? "text-green-600" : "text-red-600"}>
-                        {configData.isConfigured ? "Configured" : "Not Configured"}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>n8n Integration:</span>
-                      <span className={configData.n8nEnabled ? "text-blue-600" : "text-gray-500"}>
-                        {configData.n8nEnabled ? "Enabled" : "Disabled"}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <div className="flex justify-end space-x-4 pt-6">
-            <Button
-              type="submit"
-              disabled={configMutation.isPending}
-              data-testid="button-save-config"
-              className="px-8"
-            >
-              {configMutation.isPending ? "Saving..." : "Save Configuration"}
+  return (
+    <div className="min-h-screen bg-gray-50 py-8">
+      <div className="max-w-4xl mx-auto space-y-6">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-6">
+          <h1 className="text-3xl font-bold text-gray-900">Settings</h1>
+          <Button onClick={logout} variant="outline" className="text-red-600 hover:text-red-700">
+            Logout
             </Button>
-          </div>
-        </form>
-      </Tabs>
+              </div>
+
+        {/* Debug Section */}
+        {renderDebugSection()}
+
+        {/* WhatsApp Configuration */}
+        {renderWhatsAppSection()}
+
+        {/* Add other sections here as needed */}
+      </div>
     </div>
   );
 }

@@ -5,9 +5,11 @@
   "license": "MIT",
   "description": "Enterprise-grade WhatsApp Business API platform with advanced automation, analytics, and integrations",
   "scripts": {
-    "dev": "cross-env NODE_ENV=development tsx server/index.ts",
+    "dev": "concurrently \"npm run dev:frontend\" \"npm run dev:backend\"",
+    "dev:frontend": "vite --port 3000",
+    "dev:backend": "cross-env NODE_ENV=development tsx server/index.ts",
     "build": "vite build && esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist",
-    "build:client": "cd client && npm run build",
+    "build:client": "vite build",
     "build:server": "esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist",
     "start": "NODE_ENV=production node dist/index.js",
     "vercel-build": "npm run build:client && npm run build:server",
@@ -15,7 +17,10 @@
     "db:push": "drizzle-kit push",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "db:init": "tsx scripts/init-db.js",
+    "db:clean-init": "tsx scripts/clean-and-init-db.js",
+    "db:simple-init": "tsx scripts/simple-init-db.js"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
@@ -123,6 +128,7 @@
     "@types/ws": "^8.18.1",
     "@vitejs/plugin-react": "^4.3.2",
     "autoprefixer": "^10.4.20",
+    "concurrently": "^9.2.0",
     "cross-env": "^10.0.0",
     "drizzle-kit": "^0.30.4",
     "esbuild": "^0.25.0",

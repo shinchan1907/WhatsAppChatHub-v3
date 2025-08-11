@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
 import { apiRequest } from "@/lib/queryClient";
 import { Contact } from "@shared/schema";
 
@@ -20,23 +21,33 @@ export default function ContactManager() {
     name: "",
     phone: "",
     email: "",
-    group: "customer",
+    tags: [] as string[],
   });
 
   const { toast } = useToast();
+  const { user } = useAuth();
   const queryClient = useQueryClient();
 
+  // Temporary organization ID for testing - remove in production
+  const tempOrgId = '0994772b-cd9e-4fe6-b31e-aad537c4c37e';
+
+  // API headers with organization ID
+  const apiHeaders = {
+    'x-organization-id': tempOrgId,
+    'x-user-id': user?.id || 'test'
+  };
+
   const { data: contacts = [], isLoading } = useQuery<Contact[]>({
-    queryKey: ["/api/contacts"],
+    queryKey: ["/api/v1/contacts"],
   });
 
   const createMutation = useMutation({
     mutationFn: async (data: any) => {
-      const response = await apiRequest("POST", "/api/contacts", data);
+      const response = await apiRequest("POST", "/api/v1/contacts", data, apiHeaders);
       return response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/v1/contacts"] });
       setIsCreateDialogOpen(false);
       resetForm();
       toast({
@@ -55,11 +66,11 @@ export default function ContactManager() {
 
   const updateMutation = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: any }) => {
-      const response = await apiRequest("PUT", `/api/contacts/${id}`, data);
+      const response = await apiRequest("PUT", `/api/v1/contacts/${id}`, data, apiHeaders);
       return response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/v1/contacts"] });
       setEditingContact(null);
       resetForm();
       toast({
@@ -78,10 +89,10 @@ export default function ContactManager() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      await apiRequest("DELETE", `/api/contacts/${id}`);
+      await apiRequest("DELETE", `/api/v1/contacts/${id}`, undefined, apiHeaders);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/v1/contacts"] });
       toast({
         title: "Contact deleted",
         description: "Your contact has been deleted successfully.",
@@ -101,7 +112,7 @@ export default function ContactManager() {
       name: "",
       phone: "",
       email: "",
-      group: "customer",
+      tags: [],
     });
   };
 
@@ -118,10 +129,10 @@ export default function ContactManager() {
   const handleEdit = (contact: Contact) => {
     setEditingContact(contact);
     setFormData({
-      name: contact.name,
+      name: contact.name || "",
       phone: contact.phone,
       email: contact.email || "",
-      group: contact.group || "customer",
+      tags: Array.isArray(contact.tags) ? contact.tags : [],
     });
     setIsCreateDialogOpen(true);
   };
@@ -132,11 +143,12 @@ export default function ContactManager() {
     resetForm();
   };
 
-  // Filter contacts based on search and group
+  // Filter contacts based on search and tags
   const filteredContacts = contacts.filter(contact => {
-    const matchesSearch = contact.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    const matchesSearch = (contact.name?.toLowerCase() || "").includes(searchTerm.toLowerCase()) ||
                          contact.phone.includes(searchTerm);
-    const matchesGroup = filterGroup === "all" || (contact.group || "customer") === filterGroup;
+    const matchesGroup = filterGroup === "all" || 
+                        (Array.isArray(contact.tags) && contact.tags.includes(filterGroup));
     return matchesSearch && matchesGroup;
   });
 
@@ -151,7 +163,8 @@ export default function ContactManager() {
   };
 
   const getUniqueGroups = () => {
-    const groups = [...new Set(contacts.map(c => c.group || "customer"))];
+    const allTags = contacts.flatMap(c => Array.isArray(c.tags) ? c.tags : []);
+    const groups = Array.from(new Set(allTags));
     return groups;
   };
 
@@ -247,19 +260,19 @@ export default function ContactManager() {
                   />
                 </div>
                 <div>
-                  <Label htmlFor="group">Group</Label>
-                  <Select value={formData.group} onValueChange={(value) => setFormData(prev => ({ ...prev, group: value }))}>
-                    <SelectTrigger data-testid="select-contact-group">
-                      <SelectValue placeholder="Select group" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="customer">Customer</SelectItem>
-                      <SelectItem value="prospect">Prospect</SelectItem>
-                      <SelectItem value="vip">VIP</SelectItem>
-                      <SelectItem value="lead">Lead</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <Label htmlFor="tags">Tags</Label>
+                  <Input
+                    id="tags"
+                    value={formData.tags.join(', ')}
+                    onChange={(e) => setFormData(prev => ({ 
+                      ...prev, 
+                      tags: e.target.value.split(',').map(tag => tag.trim()).filter(tag => tag)
+                    }))}
+                    placeholder="customer, prospect, vip (comma separated)"
+                    data-testid="input-contact-tags"
+                  />
                 </div>
+
                 <div className="flex justify-end space-x-2 pt-4">
                   <Button
                     type="button"
@@ -346,8 +359,8 @@ export default function ContactManager() {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-4">
                       <img
-                        src={contact.profileImageUrl || "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?ixlib=rb-4.0.3&w=48&h=48&fit=crop&crop=face"}
-                        alt={contact.name}
+                        src={contact.avatar || "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?ixlib=rb-4.0.3&w=48&h=48&fit=crop&crop=face"}
+                        alt={contact.name || "Contact"}
                         className="w-12 h-12 rounded-full object-cover"
                       />
                       <div>
@@ -357,9 +370,17 @@ export default function ContactManager() {
                           <p className="text-sm text-gray-500">{contact.email}</p>
                         )}
                         <div className="flex items-center space-x-2 mt-1">
-                          <Badge className={getGroupColor(contact.group)}>
-                            {contact.group}
-                          </Badge>
+                          {Array.isArray(contact.tags) && contact.tags.length > 0 ? (
+                            contact.tags.map((tag, index) => (
+                              <Badge key={index} className={getGroupColor(tag)}>
+                                {tag}
+                              </Badge>
+                            ))
+                          ) : (
+                            <Badge className="bg-gray-100 text-gray-800">
+                              No tags
+                            </Badge>
+                          )}
                           <span className="text-xs text-gray-500">
                             Last contact: {formatLastContact(contact.lastContact)}
                           </span>

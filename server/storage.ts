@@ -191,6 +191,8 @@ class MemStorage implements IStorage {
       status: "delivered",
       templateId: null,
       metadata: null,
+      isRead: false,
+      readAt: null,
       timestamp: new Date(Date.now() - 4 * 60 * 1000), // 4 minutes ago
     };
 
@@ -204,6 +206,8 @@ class MemStorage implements IStorage {
       status: "read",
       templateId: null,
       metadata: null,
+      isRead: true,
+      readAt: new Date(Date.now() - 2.5 * 60 * 1000), // 2.5 minutes ago
       timestamp: new Date(Date.now() - 3 * 60 * 1000), // 3 minutes ago
     };
 
@@ -217,6 +221,8 @@ class MemStorage implements IStorage {
       status: "delivered",
       templateId: null,
       metadata: null,
+      isRead: false,
+      readAt: null,
       timestamp: new Date(Date.now() - 1 * 60 * 1000), // 1 minute ago
     };
 
@@ -332,7 +338,9 @@ class MemStorage implements IStorage {
       type: insertMessage.type || "text",
       status: insertMessage.status || "sent",
       templateId: insertMessage.templateId || null,
-      metadata: insertMessage.metadata || null
+      metadata: insertMessage.metadata || null,
+      isRead: false,
+      readAt: null
     };
     this.messages.set(id, message);
     
@@ -418,7 +426,14 @@ class MemStorage implements IStorage {
       ...insertBroadcast, 
       id, 
       createdAt: new Date(),
-      sentAt: null
+      sentAt: null,
+      variables: insertBroadcast.variables || null,
+      csvData: insertBroadcast.csvData || null,
+      status: insertBroadcast.status || "pending",
+      sentCount: insertBroadcast.sentCount || 0,
+      deliveredCount: insertBroadcast.deliveredCount || 0,
+      failedCount: insertBroadcast.failedCount || 0,
+      scheduledFor: insertBroadcast.scheduledFor || null
     };
     this.broadcasts.set(id, broadcast);
     return broadcast;
@@ -493,6 +508,8 @@ class MemStorage implements IStorage {
       ...log,
       id,
       timestamp: new Date(),
+      status: log.status || "success",
+      errorMessage: log.errorMessage || null
     };
     this.webhookLogs.set(id, webhookLog);
     return webhookLog;
@@ -634,7 +651,9 @@ export class DatabaseStorage implements IStorage {
         type: insertMessage.type || "text",
         status: insertMessage.status || "sent",
         templateId: insertMessage.templateId || null,
-        metadata: insertMessage.metadata || null
+        metadata: insertMessage.metadata || null,
+        isRead: false,
+        readAt: null
       })
       .returning();
     
@@ -722,7 +741,14 @@ export class DatabaseStorage implements IStorage {
         ...insertBroadcast, 
         id: randomUUID(), 
         createdAt: new Date(),
-        sentAt: null
+        sentAt: null,
+        variables: insertBroadcast.variables || null,
+        csvData: insertBroadcast.csvData || null,
+        status: insertBroadcast.status || "pending",
+        sentCount: insertBroadcast.sentCount || 0,
+        deliveredCount: insertBroadcast.deliveredCount || 0,
+        failedCount: insertBroadcast.failedCount || 0,
+        scheduledFor: insertBroadcast.scheduledFor || null
       })
       .returning();
     return broadcast;
@@ -802,7 +828,9 @@ export class DatabaseStorage implements IStorage {
       .values({ 
         ...insertLog, 
         id: randomUUID(), 
-        timestamp: new Date()
+        timestamp: new Date(),
+        status: insertLog.status || "success",
+        errorMessage: insertLog.errorMessage || null
       })
       .returning();
     return log;
@@ -817,4 +845,17 @@ export class DatabaseStorage implements IStorage {
   }
 }
 
-export const storage = new DatabaseStorage();
+// Use MemStorage for development, DatabaseStorage for production
+// Fallback to MemStorage if DatabaseStorage fails to initialize
+let storageInstance: IStorage;
+
+try {
+  storageInstance = process.env.NODE_ENV === "production" 
+    ? new DatabaseStorage() 
+    : new MemStorage();
+} catch (error) {
+  console.warn("Failed to initialize DatabaseStorage, falling back to MemStorage:", error);
+  storageInstance = new MemStorage();
+}
+
+export const storage = storageInstance;
